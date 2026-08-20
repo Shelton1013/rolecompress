@@ -25,17 +25,20 @@ labels, (d) for long video on a frozen backbone. The novelty survey (25 papers, 
 Designed for **8× A6000 (384 GB)**. Everything is inference-heavy + small-module training;
 default is LoRA (no 7B optimizer states). Full-FT is optional (FSDP + ZeRO-3 offload).
 
-## Backbone (2026)
-Default: **`Qwen/Qwen3-VL-8B-Instruct`** (needs `transformers>=4.57`; if not yet released,
-`pip install "git+https://github.com/huggingface/transformers"`). The wrapper is
-family-aware — switch by `--model_id`:
-- `Qwen/Qwen3-VL-4B-Instruct` — fast iteration (llm_hidden 2560)
-- `Qwen/Qwen3-VL-8B-Instruct` — default (llm_hidden 4096)
-- `Qwen/Qwen3-VL-30B-A3B-Instruct` (MoE) / `Qwen/Qwen3-VL-32B-Instruct` — stronger
-- `Qwen/Qwen2.5-VL-7B-Instruct` (also install `qwen-vl-utils`) or a LLaVA-Video ckpt — for backbone-transfer ablations.
+## Backbone (fair comparison, not "newest model")
+The comparison must be **same-backbone, different token policy**. The long-video efficiency
+literature (our baselines) standardizes on **Qwen2.5-VL-7B** (~14 papers), **LLaVA-Video-7B**
+(~10), **LLaVA-OneVision-7B** (~6). And **CVPR'26 predates Qwen3-VL (Aug-2026)**, so none of the
+baselines use it. Therefore:
+- **Primary (main table): `Qwen/Qwen2.5-VL-7B-Instruct`** — default; needs `qwen-vl-utils`.
+  Fast iteration: `Qwen/Qwen2.5-VL-3B-Instruct`.
+- **Generalization row: `llava-hf/LLaVA-Video-7B-Qwen2`**.
+- **Latest-backbone bonus row: `Qwen/Qwen3-VL-8B-Instruct`** (needs `transformers>=4.57`) — shows
+  the method still helps on the newest backbone; not the comparison basis.
 
-Router feature dims (`d_visual`/`d_text`) are **auto-inferred** from the cached features
-(= the backbone's `llm_hidden`), so you never hardcode them.
+The wrapper is **family-aware** (auto-detects qwen2_5_vl / qwen3vl / llava_video from the id or
+the model config), so switch with `--model_path /local/dir` or `--model_id`. Router feature dims
+(`d_visual`/`d_text`) are **auto-inferred** from cached features (= `llm_hidden`), never hardcoded.
 
 ## Install
 ```bash

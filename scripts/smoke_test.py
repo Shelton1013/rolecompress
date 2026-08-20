@@ -24,7 +24,7 @@ def step(name):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--video", required=True)
-    ap.add_argument("--model_id", default="Qwen/Qwen3-VL-4B-Instruct")
+    ap.add_argument("--model_id", default="Qwen/Qwen2.5-VL-7B-Instruct")
     ap.add_argument("--model_path", default=None, help="local dir to a downloaded model; overrides --model_id")
     ap.add_argument("--question", default=None)
     ap.add_argument("--win", type=float, default=6.0)

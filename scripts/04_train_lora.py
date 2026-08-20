@@ -63,7 +63,7 @@ def main():
     ap.add_argument("--manifest", required=True)
     ap.add_argument("--router_ckpt", required=True)
     ap.add_argument("--out", required=True)
-    ap.add_argument("--model_id", default="Qwen/Qwen3-VL-8B-Instruct")
+    ap.add_argument("--model_id", default="Qwen/Qwen2.5-VL-7B-Instruct")
     ap.add_argument("--model_path", default=None, help="local dir to a downloaded model; overrides --model_id")
     ap.add_argument("--epochs", type=int, default=2)
     ap.add_argument("--lr", type=float, default=1e-4)

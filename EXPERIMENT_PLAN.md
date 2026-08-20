@@ -26,13 +26,25 @@ This document is the full experimental protocol; the code repo implements every 
 
 ## 2. Backbone & why
 
-- **Primary:** `Qwen/Qwen3-VL-8B-Instruct` (2026; enhanced MRope + DeepStack + text-timestamp
-  video alignment — the timestamp alignment actively helps our segment/ASR-timestamp design).
-  Frozen. Needs `transformers>=4.57`. `Qwen/Qwen3-VL-4B-Instruct` for fast iteration.
-- **Secondary (robustness / rebuttal / backbone-transfer ablation):** `Qwen/Qwen3-VL-30B-A3B-Instruct`
-  (MoE), a `LLaVA-Video`/`LLaVA-OneVision` checkpoint, and `Qwen/Qwen2.5-VL-7B-Instruct`
-  (shows the method is backbone-agnostic; adding audio via `Qwen3-Omni` text stream is a drop-in).
-- **What we train:** the **Role Router** (~5–15M params) + **LoRA** (rank 16–32) on the LLM's attention/MLP proj. Backbone weights frozen. Fits comfortably on 8×A6000 (48 GB×8 = 384 GB): 8B frozen + LoRA is light; 4B for fast iteration; 30B-A3B MoE is the upper end at this budget.
+**Backbone choice is a fairness decision, not a "use the newest model" decision.** The
+comparison must be *same-backbone, different token policy*. We surveyed the backbones used by
+this literature (our baselines): **Qwen2.5-VL-7B (~14 papers, the de-facto standard),
+LLaVA-Video-7B (~10), LLaVA-OneVision-7B (~6)**, plus InternVL2.5/Qwen2-VL. Crucially,
+**CVPR'26 papers were submitted Nov-2025 / camera-ready Apr-2026 — before Qwen3-VL (Aug-2026)**,
+so none of them use Qwen3-VL. Therefore:
+
+- **Primary (main comparison table):** `Qwen/Qwen2.5-VL-7B-Instruct` — matches the baselines, so
+  ReMo / FastV / token-merge / query-selection are re-run on the *same* backbone (only the token
+  policy differs). Frozen. Fast-iteration: `Qwen/Qwen2.5-VL-3B-Instruct`.
+- **Generalization row:** `llava-hf/LLaVA-Video-7B-Qwen2` — shows the method transfers across the
+  second most common backbone.
+- **Latest-backbone bonus row:** `Qwen/Qwen3-VL-8B-Instruct` (needs `transformers>=4.57`) — "still
+  helps on the newest backbone"; a bonus, *not* the basis of the head-to-head comparison.
+- **Extension (follow-up / ablation):** `Qwen3-Omni` to show native audio is a drop-in replacement
+  for the ASR-text stream. Note **ReMo itself is reported on Qwen2.5-Omni** (it is audio-visual);
+  we compare against our same-backbone re-implementation of its redundancy-drop, and optionally
+  also run the Omni backbone to match ReMo's exact setting.
+- **What we train:** the **Role Router** (~5–15M params) + **LoRA** (rank 16–32) on the LLM's attention/MLP proj. Backbone weights frozen. Fits comfortably on 8×A6000 (48 GB×8 = 384 GB): a frozen 7B + LoRA is light; the 3B variant is for fast iteration.
 
 ---
 

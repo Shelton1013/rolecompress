@@ -1,8 +1,8 @@
 # Core (server / 8xA6000, CUDA 12.x)
 torch>=2.4
-# Qwen3-VL needs transformers >= 4.57. If 4.57 is not yet on PyPI for your date,
-# install from source:  pip install "git+https://github.com/huggingface/transformers"
-transformers>=4.57.0
+transformers>=4.49.0         # Qwen2.5-VL (primary backbone). For the Qwen3-VL bonus row bump to
+                             # >=4.57 (or: pip install "git+https://github.com/huggingface/transformers")
+qwen-vl-utils>=0.0.8         # required by the PRIMARY backbone (Qwen2.5-VL) input path
 accelerate>=0.34
 peft>=0.13
 decord>=0.6.0                 # video frame reading
@@ -13,10 +13,10 @@ Pillow>=10.0
 tqdm>=4.66
 datasets>=2.20               # scripts/00_convert_benchmarks.py (HF benchmark loading)
 
-# Backbone-specific:
-#   Qwen3-VL (default): no qwen-vl-utils needed (uses processor.apply_chat_template return_dict).
-#   Qwen2.5-VL (alt)  : also install  qwen-vl-utils>=0.0.8
-# qwen-vl-utils>=0.0.8
+# Backbone notes:
+#   Qwen2.5-VL-7B (PRIMARY, matches baselines) -> needs qwen-vl-utils (above).
+#   LLaVA-Video-7B (generalization row)        -> transformers LLaVA classes.
+#   Qwen3-VL-8B (latest-backbone bonus row)    -> transformers>=4.57, no qwen-vl-utils.
 
 # Optional / paper extras
 # flash-attn>=2.6              # attn_implementation="flash_attention_2"

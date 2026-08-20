@@ -36,7 +36,10 @@ from .roles import Role, RoleBudget, allocate_frames
 @dataclass
 class BackboneConfig:
     # model_id may be a HF repo id OR a LOCAL PATH (from_pretrained treats them identically).
-    model_id: str = "Qwen/Qwen3-VL-8B-Instruct"   # 2026 default; 4B for fast iteration, 30B-A3B(MoE)/32B for strength
+    # PRIMARY = Qwen2.5-VL-7B: the de-facto backbone of the long-video efficiency literature
+    # (our baselines), so the main comparison is same-backbone / apples-to-apples. Also run
+    # LLaVA-Video-7B (generalization) and Qwen3-VL-8B (latest-backbone bonus row).
+    model_id: str = "Qwen/Qwen2.5-VL-7B-Instruct"
     dtype: str = "bfloat16"
     device_map: str = "auto"
     attn_impl: str = "sdpa"                 # "flash_attention_2" if flash-attn built

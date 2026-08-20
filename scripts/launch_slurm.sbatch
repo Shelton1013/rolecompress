@@ -17,7 +17,7 @@ STAGE=${1:-eval}
 ROOT=$(pwd)
 DATA=/data/rolecompress          # working dir for artifacts
 MANIFEST=$DATA/manifest.jsonl    # {"video_id","path","captions"?,"qa"?}
-MODEL=Qwen/Qwen3-VL-8B-Instruct   # 4B for fast iteration; 30B-A3B(MoE)/32B for strength
+MODEL=Qwen/Qwen2.5-VL-7B-Instruct   # PRIMARY (matches baselines). Alts: llava-hf/LLaVA-Video-7B-Qwen2, Qwen/Qwen3-VL-8B-Instruct
 export PYTHONPATH=$ROOT:$PYTHONPATH
 mkdir -p $DATA logs
 

@@ -89,7 +89,7 @@ def main():
     ap.add_argument("--downscale", type=float, default=2.0, help="tokenmerge spatial downscale factor")
     ap.add_argument("--router_ckpt", default=None)
     ap.add_argument("--lora", default=None)
-    ap.add_argument("--model_id", default="Qwen/Qwen3-VL-8B-Instruct")
+    ap.add_argument("--model_id", default="Qwen/Qwen2.5-VL-7B-Instruct")
     ap.add_argument("--model_path", default=None, help="local dir to a downloaded model; overrides --model_id")
     ap.add_argument("--n_low", type=int, default=1)
     ap.add_argument("--n_high", type=int, default=4)
