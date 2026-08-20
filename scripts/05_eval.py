@@ -1,0 +1,150 @@
+# -*- coding: utf-8 -*-
+"""Stage 5: efficiency-accuracy evaluation + synergy-subset crossover.
+
+Evaluates a chosen allocation POLICY on a long-video QA benchmark at matched budgets:
+  --policy rolecompress|uniform|remo|query|tokenmerge|random_role|oracle_role
+
+Outputs a jsonl of per-item results and a summary json (accuracy, mean visual tokens,
+FLOPs proxy, synergy-subset accuracy, role fractions). Sweep --n_high to trace the Pareto.
+
+The synergy subset is precomputed by --tag_synergy (needs gold; uses the 3 frozen passes).
+"""
+import argparse
+import json
+import os
+import random
+
+import torch
+
+from rolecompress import segment as seg_mod
+from rolecompress import asr as asr_mod
+from rolecompress.backbone import BackboneConfig, RoleCompressBackbone
+from rolecompress.data import read_jsonl, write_jsonl
+from rolecompress.metrics import EvalAccumulator, mcq_correct, is_synergy_required
+from rolecompress.roles import Role, RoleBudget
+from rolecompress.router import RoleRouter, RouterConfig
+
+
+def load_router(path, device):
+    ckpt = torch.load(path, map_location=device)
+    model = RoleRouter(RouterConfig(**ckpt["cfg"])).to(device).eval()
+    model.load_state_dict(ckpt["state_dict"])
+    return model
+
+
+def remo_roles(backbone, frames_per_seg, seg_asr):
+    """ReMo-style baseline: a segment is REDUNDANT if its visual mean feature is highly
+    similar to something already covered (here: to its own ASR text embedding, cross-modal),
+    else UNIQUE_VISUAL. No synergy branch (that's the point of the baseline)."""
+    import torch.nn.functional as F
+    vis, txt, _ = backbone.pooled_segment_features(frames_per_seg, seg_asr)
+    roles = []
+    for i in range(vis.shape[0]):
+        if seg_asr[i].strip():
+            sim = F.cosine_similarity(vis[i:i+1].float(), txt[i:i+1].float()).item()
+            roles.append(Role.REDUNDANT if sim > 0.25 else Role.UNIQUE_VISUAL)
+        else:
+            roles.append(Role.UNIQUE_VISUAL)
+    return roles
+
+
+def policy_roles(policy, backbone, router, device, segs, frames_per_seg, seg_asr,
+                 oracle_margins=None, tau=(0.5, 0.0)):
+    n = len(segs)
+    if policy == "uniform":
+        return [Role.UNIQUE_VISUAL] * n            # every segment same budget = uniform
+    if policy == "random_role":
+        return [random.choice(list(Role)) for _ in range(n)]
+    if policy == "remo":
+        return remo_roles(backbone, frames_per_seg, seg_asr)
+    if policy == "oracle_role" and oracle_margins is not None:
+        from rolecompress.roles import assign_role_from_margins
+        return [assign_role_from_margins(*oracle_margins.get(i, (0, 0, 0)), tau[0], tau[1]) for i in range(n)]
+    # rolecompress (default)
+    with torch.no_grad():
+        vis, txt, scal = backbone.pooled_segment_features(frames_per_seg, seg_asr)
+        logits = router(vis.unsqueeze(0).to(device), txt.unsqueeze(0).to(device),
+                        scal.unsqueeze(0).to(device), torch.ones(1, n, dtype=torch.bool, device=device))
+        return [Role(int(x)) for x in logits.argmax(-1)[0].tolist()]
+
+
+def main():
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--qa_eval", required=True)
+    ap.add_argument("--manifest", required=True)
+    ap.add_argument("--out", required=True)
+    ap.add_argument("--policy", default="rolecompress",
+                    choices=["rolecompress", "uniform", "remo", "random_role", "oracle_role"])
+    ap.add_argument("--router_ckpt", default=None)
+    ap.add_argument("--lora", default=None)
+    ap.add_argument("--model_id", default="Qwen/Qwen2.5-VL-7B-Instruct")
+    ap.add_argument("--n_low", type=int, default=1)
+    ap.add_argument("--n_high", type=int, default=4)
+    ap.add_argument("--uniform_frames", type=int, default=2, help="frames/seg for uniform policy at this budget")
+    ap.add_argument("--win", type=float, default=6.0)
+    ap.add_argument("--fps", type=float, default=1.0)
+    ap.add_argument("--tag_synergy", action="store_true",
+                    help="also run 3 frozen passes per item to mark the synergy subset")
+    ap.add_argument("--tau_hi", type=float, default=0.5)
+    ap.add_argument("--tau_lo", type=float, default=0.0)
+    ap.add_argument("--limit", type=int, default=0)
+    args = ap.parse_args()
+
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+    manifest = {r["video_id"]: r["path"] for r in read_jsonl(args.manifest)}
+    backbone = RoleCompressBackbone(BackboneConfig(model_id=args.model_id), lora_adapter_path=args.lora)
+    router = load_router(args.router_ckpt, device) if (args.policy == "rolecompress" and args.router_ckpt) else None
+
+    budget = RoleBudget(n_unique_visual=args.n_low, n_synergistic=args.n_high)
+    if args.policy == "uniform":
+        budget = RoleBudget(n_redundant=args.uniform_frames, n_unique_text=args.uniform_frames,
+                            n_unique_visual=args.uniform_frames, n_synergistic=args.uniform_frames)
+
+    acc = EvalAccumulator()
+    per_item = []
+    rows = list(read_jsonl(args.qa_eval))
+    if args.limit:
+        rows = rows[:args.limit]
+
+    for r in rows:
+        vid = r.get("video_id") or r.get("video")
+        path = manifest.get(vid) or r.get("path")
+        try:
+            segs, frames_per_seg, dur = seg_mod.segment_video(path, win=args.win, fps=args.fps)
+            utt = asr_mod.transcribe(path) if not r.get("seg_asr") else []
+            seg_asr = asr_mod.align_to_segments(utt, segs) if utt else r.get("seg_asr", [""] * len(segs))
+        except Exception as e:
+            print(f"[skip] {vid}: {e}"); continue
+
+        in_syn = bool(r.get("synergy_required", False))
+        oracle_margins = None
+        if args.tag_synergy or args.policy == "oracle_role":
+            # 3 frozen passes at the QA level (whole-video probe)
+            from rolecompress.pid_labels import SegmentProbe
+            probe = SegmentProbe(vid, -1, 0, dur, r["question"], r["answer"], r.get("choices"),
+                                 " ".join(seg_asr))
+            allframes = [f for fs in frames_per_seg for f in fs][:32]
+            m = backbone.score_probe(probe, allframes)
+            in_syn = is_synergy_required(m.m_text, m.m_vision, m.m_joint, args.tau_hi, args.tau_lo)
+
+        roles = policy_roles(args.policy, backbone, router, device, segs, frames_per_seg, seg_asr,
+                             oracle_margins, (args.tau_hi, args.tau_lo))
+        inputs, vtok, _ = backbone.build_answer_inputs(r["question"], r.get("choices"),
+                                                       frames_per_seg, roles, seg_asr, budget)
+        pred = backbone.generate_answer(inputs, max_new_tokens=16 if r.get("choices") else 64)
+        correct = mcq_correct(pred, r["answer"], r.get("choices")) if r.get("choices") else (r["answer"].lower() in pred.lower())
+        acc.add(correct, vtok, in_synergy_subset=in_syn, roles=roles)
+        per_item.append({"video_id": vid, "pred": pred, "gold": r["answer"], "correct": correct,
+                         "visual_tokens": vtok, "synergy_required": in_syn,
+                         "roles": [rr.short for rr in roles]})
+
+    summ = acc.summary()
+    summ.update({"policy": args.policy, "n_low": args.n_low, "n_high": args.n_high})
+    os.makedirs(os.path.dirname(args.out) or ".", exist_ok=True)
+    write_jsonl(args.out, per_item)
+    json.dump(summ, open(args.out + ".summary.json", "w"), indent=2)
+    print(json.dumps(summ, indent=2))
+
+
+if __name__ == "__main__":
+    main()

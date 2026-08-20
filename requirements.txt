@@ -1,0 +1,20 @@
+# Core (server / 8xA6000, CUDA 12.x)
+torch>=2.4,<2.7
+transformers>=4.49.0          # Qwen2.5-VL support (Qwen2_5_VLForConditionalGeneration)
+accelerate>=0.34
+peft>=0.13
+qwen-vl-utils>=0.0.8          # process_vision_info for Qwen2.5-VL
+decord>=0.6.0                 # video frame reading
+faster-whisper>=1.0.3         # ASR (run on GPU; falls back to CPU int8)
+numpy>=1.24
+pyyaml>=6.0
+Pillow>=10.0
+tqdm>=4.66
+
+# Optional / paper extras
+# flash-attn>=2.6              # attn_implementation="flash_attention_2" (build against your CUDA)
+# deepspeed>=0.14             # if you try full-FT instead of LoRA
+# git+https://github.com/... normalizing-flow PID (GPID, 2510.04417) for the theory-link ablation
+
+# Dev (local, GPU-free logic tests)
+pytest>=8.0

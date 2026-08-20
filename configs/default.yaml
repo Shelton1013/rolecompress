@@ -1,0 +1,52 @@
+# RoleCompress default config. Values here are the ones referenced by scripts; override on CLI.
+backbone:
+  model_id: "Qwen/Qwen2.5-VL-7B-Instruct"
+  dtype: "bfloat16"
+  attn_impl: "flash_attention_2"     # use "sdpa" if flash-attn not built
+  max_pixels: 151200                 # 360*420 per frame
+  fps_sample: 1.0
+
+segmentation:
+  win: 6.0            # window length (s)
+  fps: 1.0            # raw frames/s before role allocation
+  max_per_seg: 8
+
+asr:
+  size: "large-v3"
+  language: null      # auto-detect
+
+pid_labels:
+  temperature: 1.0
+  hi_quantile: 0.6    # tau_hi = 60th percentile of margins
+  lo_quantile: 0.4    # tau_lo = 40th percentile
+  # tau_hi/tau_lo are calibrated from data unless set explicitly
+
+router:
+  d_visual: 1280      # Qwen2.5-VL ViT hidden (VERIFY per model)
+  d_text: 3584        # Qwen2.5-VL-7B LLM hidden
+  d_hidden: 512
+  n_layers: 3
+  use_context: true
+  synergy_class_weight: 3.0   # upweight rare SYNERGISTIC class
+
+budget:
+  # frame-budget path (primary)
+  n_redundant: 0
+  n_unique_text: 0
+  n_unique_visual: 1
+  n_synergistic: 4
+  min_total_frames: 4
+  max_total_frames: 64
+
+train_lora:
+  r: 16
+  lora_alpha: 32
+  lr: 1.0e-4
+  epochs: 2
+  grad_accum: 8
+
+eval:
+  policies: ["uniform", "remo", "rolecompress", "oracle_role"]
+  n_high_sweep: [2, 4, 6, 8]   # trace the accuracy-vs-budget Pareto
+  tau_hi: 0.5
+  tau_lo: 0.0

@@ -1,0 +1,32 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.ipynb_checkpoints/
+
+# Envs
+.venv/
+venv/
+env/
+
+# Data / artifacts / model outputs (never commit these)
+data/
+*.pt
+*.pth
+*.safetensors
+*.mp4
+*.jsonl
+!configs/*.jsonl
+lora_adapter/
+router.pt
+logs/
+results/
+*.png
+!docs/*.png
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
