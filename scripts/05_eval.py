@@ -90,6 +90,7 @@ def main():
     ap.add_argument("--router_ckpt", default=None)
     ap.add_argument("--lora", default=None)
     ap.add_argument("--model_id", default="Qwen/Qwen3-VL-8B-Instruct")
+    ap.add_argument("--model_path", default=None, help="local dir to a downloaded model; overrides --model_id")
     ap.add_argument("--n_low", type=int, default=1)
     ap.add_argument("--n_high", type=int, default=4)
     ap.add_argument("--uniform_frames", type=int, default=2, help="frames/seg for uniform policy at this budget")
@@ -104,7 +105,7 @@ def main():
 
     device = "cuda" if torch.cuda.is_available() else "cpu"
     manifest = {r["video_id"]: r["path"] for r in read_jsonl(args.manifest)}
-    backbone = RoleCompressBackbone(BackboneConfig(model_id=args.model_id), lora_adapter_path=args.lora)
+    backbone = RoleCompressBackbone(BackboneConfig(model_id=(args.model_path or args.model_id)), lora_adapter_path=args.lora)
     router = load_router(args.router_ckpt, device) if (args.policy == "rolecompress" and args.router_ckpt) else None
 
     budget = RoleBudget(n_unique_visual=args.n_low, n_synergistic=args.n_high)

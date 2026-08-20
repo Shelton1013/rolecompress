@@ -25,6 +25,7 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--video", required=True)
     ap.add_argument("--model_id", default="Qwen/Qwen3-VL-4B-Instruct")
+    ap.add_argument("--model_path", default=None, help="local dir to a downloaded model; overrides --model_id")
     ap.add_argument("--question", default=None)
     ap.add_argument("--win", type=float, default=6.0)
     ap.add_argument("--fps", type=float, default=1.0)
@@ -39,7 +40,7 @@ def main():
     from rolecompress.roles import Role, RoleBudget, assign_role_from_margins
 
     step("1. load backbone")
-    backbone = RoleCompressBackbone(BackboneConfig(model_id=args.model_id))
+    backbone = RoleCompressBackbone(BackboneConfig(model_id=(args.model_path or args.model_id)))
     print(f"  family={backbone.family}  llm_hidden={backbone.llm_hidden}  device={backbone.device}")
 
     step("2. segment video + sample frames")

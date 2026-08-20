@@ -35,21 +35,43 @@ from .roles import Role, RoleBudget, allocate_frames
 
 @dataclass
 class BackboneConfig:
+    # model_id may be a HF repo id OR a LOCAL PATH (from_pretrained treats them identically).
     model_id: str = "Qwen/Qwen3-VL-8B-Instruct"   # 2026 default; 4B for fast iteration, 30B-A3B(MoE)/32B for strength
     dtype: str = "bfloat16"
     device_map: str = "auto"
     attn_impl: str = "sdpa"                 # "flash_attention_2" if flash-attn built
     fps_sample: float = 1.0
     trust_remote_code: bool = True
+    family: Optional[str] = None            # override auto-detection: qwen3vl | qwen2_5_vl | llava_video
 
 
-def _detect_family(model_id: str) -> str:
+def _arch_string(model_id: str, trust_remote_code: bool) -> str:
+    """Read the model config's `architectures` (robust for arbitrary local folder names)."""
+    try:
+        from transformers import AutoConfig
+        cfg = AutoConfig.from_pretrained(model_id, trust_remote_code=trust_remote_code)
+        return " ".join(getattr(cfg, "architectures", []) or []).lower()
+    except Exception:
+        return ""
+
+
+def _detect_family(model_id: str, override: Optional[str] = None, trust_remote_code: bool = True) -> str:
+    if override:
+        return override
     m = model_id.lower()
     if "qwen3-vl" in m or "qwen3vl" in m:
         return "qwen3vl"
     if "qwen2.5-vl" in m or "qwen2_5_vl" in m or "qwen2-vl" in m:
         return "qwen2_5_vl"
     if "llava" in m:
+        return "llava_video"
+    # local path with a non-descriptive name -> fall back to the config architectures
+    arch = _arch_string(model_id, trust_remote_code)
+    if "qwen3vl" in arch or "qwen3_vl" in arch:
+        return "qwen3vl"
+    if "qwen2_5vl" in arch or "qwen2_5_vl" in arch or "qwen2vl" in arch:
+        return "qwen2_5_vl"
+    if "llava" in arch:
         return "llava_video"
     return "qwen3vl"  # sensible default
 
@@ -58,13 +80,12 @@ def _load_model(model_id: str, family: str, dtype, cfg: BackboneConfig):
     kw = dict(torch_dtype=dtype, device_map=cfg.device_map,
               attn_implementation=cfg.attn_impl, trust_remote_code=cfg.trust_remote_code)
     if family == "qwen3vl":
-        try:
+        arch = _arch_string(model_id, cfg.trust_remote_code)
+        is_moe = ("moe" in arch) or ("a3b" in model_id.lower()) or ("a22b" in model_id.lower())
+        if is_moe:
+            from transformers import Qwen3VLMoeForConditionalGeneration as M   # 30B-A3B / 235B-A22B
+        else:
             from transformers import Qwen3VLForConditionalGeneration as M      # dense
-        except ImportError:
-            from transformers import Qwen3VLMoeForConditionalGeneration as M   # MoE (30B-A3B / 235B-A22B)
-        # MoE ids need the Moe class:
-        if "a3b" in model_id.lower() or "a22b" in model_id.lower():
-            from transformers import Qwen3VLMoeForConditionalGeneration as M
         return M.from_pretrained(model_id, **kw)
     if family == "qwen2_5_vl":
         from transformers import Qwen2_5_VLForConditionalGeneration as M
@@ -79,7 +100,7 @@ def _load_model(model_id: str, family: str, dtype, cfg: BackboneConfig):
 class RoleCompressBackbone:
     def __init__(self, cfg: BackboneConfig, lora_adapter_path: Optional[str] = None):
         self.cfg = cfg
-        self.family = _detect_family(cfg.model_id)
+        self.family = _detect_family(cfg.model_id, cfg.family, cfg.trust_remote_code)
         from transformers import AutoProcessor
         dtype = getattr(torch, cfg.dtype)
         self.processor = AutoProcessor.from_pretrained(cfg.model_id, trust_remote_code=cfg.trust_remote_code)

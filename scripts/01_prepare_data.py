@@ -44,6 +44,7 @@ def main():
     ap.add_argument("--manifest", required=True)
     ap.add_argument("--out", required=True)
     ap.add_argument("--model_id", default="Qwen/Qwen3-VL-8B-Instruct")
+    ap.add_argument("--model_path", default=None, help="local dir to a downloaded model; overrides --model_id")
     ap.add_argument("--win", type=float, default=6.0)
     ap.add_argument("--fps", type=float, default=1.0)
     ap.add_argument("--max_per_seg", type=int, default=8)
@@ -62,7 +63,7 @@ def main():
     rows = [r for k, r in enumerate(read_jsonl(args.manifest)) if k % N == i]
     backbone = None
     if args.make_feats:
-        backbone = RoleCompressBackbone(BackboneConfig(model_id=args.model_id))
+        backbone = RoleCompressBackbone(BackboneConfig(model_id=(args.model_path or args.model_id)))
 
     probe_rows = []
     for r in rows:

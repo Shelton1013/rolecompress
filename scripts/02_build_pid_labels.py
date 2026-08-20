@@ -33,6 +33,7 @@ def main():
     ap.add_argument("--manifest", required=True, help="video_id -> path")
     ap.add_argument("--out", required=True)
     ap.add_argument("--model_id", default="Qwen/Qwen3-VL-8B-Instruct")
+    ap.add_argument("--model_path", default=None, help="local dir to a downloaded model; overrides --model_id")
     ap.add_argument("--shard", default="0/1")
     ap.add_argument("--fps", type=float, default=1.0)
     ap.add_argument("--max_per_seg", type=int, default=8)
@@ -66,7 +67,7 @@ def main():
 
     # scoring path
     manifest = {r["video_id"]: r["path"] for r in read_jsonl(args.manifest)}
-    backbone = RoleCompressBackbone(BackboneConfig(model_id=args.model_id))
+    backbone = RoleCompressBackbone(BackboneConfig(model_id=(args.model_path or args.model_id)))
     readers = {}
 
     def frames_for(video_id, start, end):

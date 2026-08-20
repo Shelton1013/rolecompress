@@ -64,6 +64,7 @@ def main():
     ap.add_argument("--router_ckpt", required=True)
     ap.add_argument("--out", required=True)
     ap.add_argument("--model_id", default="Qwen/Qwen3-VL-8B-Instruct")
+    ap.add_argument("--model_path", default=None, help="local dir to a downloaded model; overrides --model_id")
     ap.add_argument("--epochs", type=int, default=2)
     ap.add_argument("--lr", type=float, default=1e-4)
     ap.add_argument("--grad_accum", type=int, default=8)
@@ -77,7 +78,7 @@ def main():
     manifest = {r["video_id"]: r["path"] for r in read_jsonl(args.manifest)}
     budget = RoleBudget(n_unique_visual=args.n_low, n_synergistic=args.n_high)
 
-    backbone = RoleCompressBackbone(BackboneConfig(model_id=args.model_id))
+    backbone = RoleCompressBackbone(BackboneConfig(model_id=(args.model_path or args.model_id)))
     backbone.model = add_lora(backbone.model)
     backbone.model.train()
     backbone.model.enable_input_require_grads()
