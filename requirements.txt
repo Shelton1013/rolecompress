@@ -1,5 +1,7 @@
 # Core (server / 8xA6000, CUDA 12.x)
 torch>=2.4
+torchvision>=0.19           # REQUIRED by the Qwen2.5-VL video processor; must match your torch/CUDA
+                            # (e.g. pip install torchvision --index-url https://download.pytorch.org/whl/cu121)
 transformers>=4.49.0         # Qwen2.5-VL (primary backbone). For the Qwen3-VL bonus row bump to
                              # >=4.57 (or: pip install "git+https://github.com/huggingface/transformers")
 qwen-vl-utils>=0.0.8         # required by the PRIMARY backbone (Qwen2.5-VL) input path
