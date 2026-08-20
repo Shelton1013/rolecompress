@@ -24,8 +24,11 @@ from .roles import NUM_ROLES
 
 @dataclass
 class RouterConfig:
-    d_visual: int = 1152      # vision encoder hidden (e.g. Qwen2.5-VL ViT ~1280; set per backbone)
-    d_text: int = 3584        # LLM hidden for pooled ASR text embedding (Qwen2.5-VL-7B = 3584)
+    # Both visual and text router features live in the LLM embedding space, so
+    # d_visual == d_text == backbone.llm_hidden. Set these from backbone.feature_dims()
+    # at train time (e.g. Qwen3-VL-8B = 4096, Qwen3-VL-4B = 2560). Defaults target Qwen3-VL-8B.
+    d_visual: int = 4096      # = llm_hidden
+    d_text: int = 4096        # = llm_hidden
     d_scalar: int = 4         # [seg_seconds, has_speech, visual_var, asr_len_norm]
     d_hidden: int = 512
     n_layers: int = 3

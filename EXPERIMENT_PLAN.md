@@ -26,9 +26,13 @@ This document is the full experimental protocol; the code repo implements every 
 
 ## 2. Backbone & why
 
-- **Primary:** `Qwen/Qwen2.5-VL-7B-Instruct` (strong long-video VLM, HF-native, exposes `video_grid_thw` and `get_rope_index` so per-segment token accounting is tractable). Frozen.
-- **Secondary (robustness / rebuttal):** `llava-hf/LLaVA-NeXT-Video-7B-hf` and `Qwen/Qwen2.5-Omni-7B` (to show the method is backbone-agnostic and that adding audio to the ASR text stream is a drop-in).
-- **What we train:** the **Role Router** (~5–15M params) + **LoRA** (rank 16–32) on the LLM's attention/MLP proj + the fusion (visual merger) input. Backbone weights frozen. Fits comfortably on 8×A6000 (48 GB×8 = 384 GB).
+- **Primary:** `Qwen/Qwen3-VL-8B-Instruct` (2026; enhanced MRope + DeepStack + text-timestamp
+  video alignment — the timestamp alignment actively helps our segment/ASR-timestamp design).
+  Frozen. Needs `transformers>=4.57`. `Qwen/Qwen3-VL-4B-Instruct` for fast iteration.
+- **Secondary (robustness / rebuttal / backbone-transfer ablation):** `Qwen/Qwen3-VL-30B-A3B-Instruct`
+  (MoE), a `LLaVA-Video`/`LLaVA-OneVision` checkpoint, and `Qwen/Qwen2.5-VL-7B-Instruct`
+  (shows the method is backbone-agnostic; adding audio via `Qwen3-Omni` text stream is a drop-in).
+- **What we train:** the **Role Router** (~5–15M params) + **LoRA** (rank 16–32) on the LLM's attention/MLP proj. Backbone weights frozen. Fits comfortably on 8×A6000 (48 GB×8 = 384 GB): 8B frozen + LoRA is light; 4B for fast iteration; 30B-A3B MoE is the upper end at this budget.
 
 ---
 

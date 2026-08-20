@@ -1,9 +1,11 @@
 # RoleCompress default config. Values here are the ones referenced by scripts; override on CLI.
 backbone:
-  model_id: "Qwen/Qwen2.5-VL-7B-Instruct"
+  # 2026 default. Alternatives: Qwen/Qwen3-VL-4B-Instruct (fast iteration),
+  # Qwen/Qwen3-VL-30B-A3B-Instruct (MoE, stronger), Qwen/Qwen3-VL-32B-Instruct,
+  # or llava-hf LLaVA-Video / Qwen/Qwen2.5-VL-7B-Instruct (family auto-detected).
+  model_id: "Qwen/Qwen3-VL-8B-Instruct"
   dtype: "bfloat16"
-  attn_impl: "flash_attention_2"     # use "sdpa" if flash-attn not built
-  max_pixels: 151200                 # 360*420 per frame
+  attn_impl: "sdpa"                   # "flash_attention_2" if flash-attn is built
   fps_sample: 1.0
 
 segmentation:
@@ -22,8 +24,10 @@ pid_labels:
   # tau_hi/tau_lo are calibrated from data unless set explicitly
 
 router:
-  d_visual: 1280      # Qwen2.5-VL ViT hidden (VERIFY per model)
-  d_text: 3584        # Qwen2.5-VL-7B LLM hidden
+  # d_visual == d_text == backbone llm_hidden (features are in LLM space).
+  # Qwen3-VL-8B = 4096, Qwen3-VL-4B = 2560. Read at train time via backbone.feature_dims().
+  d_visual: 4096
+  d_text: 4096
   d_hidden: 512
   n_layers: 3
   use_context: true

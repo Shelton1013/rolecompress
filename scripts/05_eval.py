@@ -77,7 +77,7 @@ def main():
                     choices=["rolecompress", "uniform", "remo", "random_role", "oracle_role"])
     ap.add_argument("--router_ckpt", default=None)
     ap.add_argument("--lora", default=None)
-    ap.add_argument("--model_id", default="Qwen/Qwen2.5-VL-7B-Instruct")
+    ap.add_argument("--model_id", default="Qwen/Qwen3-VL-8B-Instruct")
     ap.add_argument("--n_low", type=int, default=1)
     ap.add_argument("--n_high", type=int, default=4)
     ap.add_argument("--uniform_frames", type=int, default=2, help="frames/seg for uniform policy at this budget")

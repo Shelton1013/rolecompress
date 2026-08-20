@@ -43,7 +43,7 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--manifest", required=True)
     ap.add_argument("--out", required=True)
-    ap.add_argument("--model_id", default="Qwen/Qwen2.5-VL-7B-Instruct")
+    ap.add_argument("--model_id", default="Qwen/Qwen3-VL-8B-Instruct")
     ap.add_argument("--win", type=float, default=6.0)
     ap.add_argument("--fps", type=float, default=1.0)
     ap.add_argument("--max_per_seg", type=int, default=8)

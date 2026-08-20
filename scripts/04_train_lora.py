@@ -50,7 +50,7 @@ def load_router(path, device):
 
 def add_lora(model):
     from peft import LoraConfig, get_peft_model
-    # [VERIFY] target module names for Qwen2.5-VL LLM decoder
+    # [VERIFY] LLM-decoder proj names (same for Qwen3-VL / Qwen2.5-VL dense; MoE uses expert names)
     target_modules = ["q_proj", "k_proj", "v_proj", "o_proj", "gate_proj", "up_proj", "down_proj"]
     lcfg = LoraConfig(r=16, lora_alpha=32, lora_dropout=0.05, bias="none",
                       target_modules=target_modules, task_type="CAUSAL_LM")
@@ -63,7 +63,7 @@ def main():
     ap.add_argument("--manifest", required=True)
     ap.add_argument("--router_ckpt", required=True)
     ap.add_argument("--out", required=True)
-    ap.add_argument("--model_id", default="Qwen/Qwen2.5-VL-7B-Instruct")
+    ap.add_argument("--model_id", default="Qwen/Qwen3-VL-8B-Instruct")
     ap.add_argument("--epochs", type=int, default=2)
     ap.add_argument("--lr", type=float, default=1e-4)
     ap.add_argument("--grad_accum", type=int, default=8)

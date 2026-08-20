@@ -44,8 +44,8 @@ def main():
     ap.add_argument("--feats_dir", required=True)
     ap.add_argument("--val_labels", default=None)
     ap.add_argument("--out", required=True)
-    ap.add_argument("--d_visual", type=int, default=1280)
-    ap.add_argument("--d_text", type=int, default=3584)
+    ap.add_argument("--d_visual", type=int, default=0, help="0 = infer from a cached feature file")
+    ap.add_argument("--d_text", type=int, default=0, help="0 = infer from a cached feature file")
     ap.add_argument("--epochs", type=int, default=20)
     ap.add_argument("--bs", type=int, default=8)
     ap.add_argument("--lr", type=float, default=2e-4)
@@ -56,6 +56,15 @@ def main():
     args = ap.parse_args()
 
     device = "cuda" if torch.cuda.is_available() else "cpu"
+    # infer router feature dims from a cached feature file if not given (both == llm_hidden)
+    if args.d_visual <= 0 or args.d_text <= 0:
+        import glob
+        fp = sorted(glob.glob(os.path.join(args.feats_dir, "*.pt")))
+        if not fp:
+            raise SystemExit(f"no cached features in {args.feats_dir}; run stage 1 with --make_feats")
+        sample = torch.load(fp[0], map_location="cpu")
+        args.d_visual = sample["vis"].shape[-1]; args.d_text = sample["txt"].shape[-1]
+        print(f"inferred d_visual={args.d_visual}, d_text={args.d_text} from {os.path.basename(fp[0])}")
     ds = RouterFeatureDataset(args.labels, args.feats_dir)
     dl = DataLoader(ds, batch_size=args.bs, shuffle=True, collate_fn=collate_router, num_workers=4)
     val_dl = None

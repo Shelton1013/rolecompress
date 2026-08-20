@@ -2,8 +2,8 @@
 
 **Compressing long-video tokens by cross-modal information role.**
 
-A frozen video-LLM (Qwen2.5-VL-7B) + a lightweight **RoleRouter** that classifies each
-video segment's information role — cross-modal **Redundant** (text/ASR covers it → drop
+A frozen video-LLM (**Qwen3-VL-8B**, 2026; Qwen2.5-VL / LLaVA-Video also supported) + a
+lightweight **RoleRouter** that classifies each video segment's information role — cross-modal **Redundant** (text/ASR covers it → drop
 visual), unimodal **Unique-Visual** (keep sparse), cross-modal **Synergistic** (keep dense)
 — trained with **self-supervised labels from single- vs joint-modality head disagreement**,
 then allocates the frame/token budget by role. Query-agnostic; one router pass per video,
@@ -25,11 +25,23 @@ labels, (d) for long video on a frozen backbone. The novelty survey (25 papers, 
 Designed for **8× A6000 (384 GB)**. Everything is inference-heavy + small-module training;
 default is LoRA (no 7B optimizer states). Full-FT is optional (FSDP + ZeRO-3 offload).
 
+## Backbone (2026)
+Default: **`Qwen/Qwen3-VL-8B-Instruct`** (needs `transformers>=4.57`; if not yet released,
+`pip install "git+https://github.com/huggingface/transformers"`). The wrapper is
+family-aware — switch by `--model_id`:
+- `Qwen/Qwen3-VL-4B-Instruct` — fast iteration (llm_hidden 2560)
+- `Qwen/Qwen3-VL-8B-Instruct` — default (llm_hidden 4096)
+- `Qwen/Qwen3-VL-30B-A3B-Instruct` (MoE) / `Qwen/Qwen3-VL-32B-Instruct` — stronger
+- `Qwen/Qwen2.5-VL-7B-Instruct` (also install `qwen-vl-utils`) or a LLaVA-Video ckpt — for backbone-transfer ablations.
+
+Router feature dims (`d_visual`/`d_text`) are **auto-inferred** from the cached features
+(= the backbone's `llm_hidden`), so you never hardcode them.
+
 ## Install
 ```bash
 python -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
-# flash-attn optional; use attn_impl="sdpa" otherwise.
+# Qwen3-VL: transformers>=4.57 (or git main). flash-attn optional; attn_impl defaults to "sdpa".
 ```
 
 ## Validate the logic locally FIRST (no GPU)
@@ -92,7 +104,7 @@ rolecompress/            core package
   roles.py               roles, budget policy, allocation  (unit-tested)
   pid_labels.py          self-supervised role labels from head margins
   router.py              RoleRouter + loss
-  backbone.py            Qwen2.5-VL wrapper: score_probe / features / role-allocated QA  [VERIFY tags]
+  backbone.py            family-aware VL wrapper (Qwen3-VL default): score_probe / features / role-allocated QA  [VERIFY tags]
   segment.py             windowing + decord frame reader
   asr.py                 faster-whisper + segment alignment
   data.py                jsonl IO + router dataset

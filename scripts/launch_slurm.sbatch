@@ -17,7 +17,7 @@ STAGE=${1:-eval}
 ROOT=$(pwd)
 DATA=/data/rolecompress          # working dir for artifacts
 MANIFEST=$DATA/manifest.jsonl    # {"video_id","path","captions"?,"qa"?}
-MODEL=Qwen/Qwen2.5-VL-7B-Instruct
+MODEL=Qwen/Qwen3-VL-8B-Instruct   # 4B for fast iteration; 30B-A3B(MoE)/32B for strength
 export PYTHONPATH=$ROOT:$PYTHONPATH
 mkdir -p $DATA logs
 
@@ -49,8 +49,8 @@ case $STAGE in
   router)   # Stage 3: train the RoleRouter (1 GPU is enough)
     python scripts/03_train_router.py \
       --labels $DATA/labels.train.jsonl --val_labels $DATA/labels.val.jsonl \
-      --feats_dir $DATA/seg_feats --out $DATA/router.pt \
-      --d_visual 1280 --d_text 3584
+      --feats_dir $DATA/seg_feats --out $DATA/router.pt
+      # d_visual/d_text auto-inferred from cached features (= llm_hidden)
     ;;
 
   lora)     # Stage 4: LoRA adaptation (torchrun across 8 GPUs)
