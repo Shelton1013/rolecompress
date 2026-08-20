@@ -11,6 +11,7 @@ numpy>=1.24
 pyyaml>=6.0
 Pillow>=10.0
 tqdm>=4.66
+datasets>=2.20               # scripts/00_convert_benchmarks.py (HF benchmark loading)
 
 # Backbone-specific:
 #   Qwen3-VL (default): no qwen-vl-utils needed (uses processor.apply_chat_template return_dict).

@@ -59,12 +59,18 @@ case $STAGE in
       --router_ckpt $DATA/router.pt --out $DATA/lora_adapter --model_id $MODEL
     ;;
 
+  convert)  # Stage 0: benchmark -> unified jsonl (videos must already be in $VIDEO_DIR)
+    python scripts/00_convert_benchmarks.py --benchmark videomme --split test \
+      --video_dir ${VIDEO_DIR:-/data/videomme/videos} --out $DATA
+    ;;
+
   eval)     # Stage 5: sweep policies x budgets on a benchmark
-    for POL in uniform remo rolecompress oracle_role; do
+    QA=${QA:-$DATA/videomme_eval.jsonl}; MAN=${MAN:-$DATA/videomme_manifest.jsonl}
+    for POL in uniform remo query saliency tokenmerge rolecompress oracle_role; do
       for NH in 2 4 6 8; do
-        python scripts/05_eval.py --qa_eval $DATA/videomme_long.jsonl --manifest $MANIFEST \
+        python scripts/05_eval.py --qa_eval $QA --manifest $MAN \
           --policy $POL --router_ckpt $DATA/router.pt --lora $DATA/lora_adapter \
-          --n_high $NH --uniform_frames $NH --tag_synergy \
+          --n_high $NH --uniform_frames $NH --keep_total $((NH*8)) --tag_synergy \
           --out $DATA/results/${POL}_nh${NH}.jsonl
       done
     done

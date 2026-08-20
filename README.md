@@ -69,6 +69,7 @@ code needs.)
 
 ## Pipeline (see scripts/, or scripts/launch_slurm.sbatch)
 ```
+0. convert : benchmark -> unified qa_eval.jsonl + manifest.jsonl            (00_convert_benchmarks.py)
 1. prepare : ASR + segmentation + segment-probes + cached router features   (01_prepare_data.py)
 2. labels  : 3 frozen passes/probe -> margins                               (02_build_pid_labels.py)
    calibrate: thresholds on merged margins -> labels.jsonl (soft+hard roles) (02 ... --calibrate_only)
@@ -87,10 +88,29 @@ sbatch scripts/launch_slurm.sbatch lora
 sbatch scripts/launch_slurm.sbatch eval
 ```
 
-## Baselines (all at matched visual budget, same backbone/LoRA)
-`uniform` · `remo` (cross-modal redundancy drop, our re-impl) · `random_role` · `oracle_role`
-(upper bound) · `rolecompress` (ours). FastV / token-merge / query-aware selectors plug in
-as extra `--policy` values (stubs indicated in `05_eval.py::policy_roles`).
+## Benchmarks (Stage 0 converter)
+`scripts/00_convert_benchmarks.py` maps Video-MME (long) / MLVU / LongVideoBench / EgoSchema
+(and any custom jsonl via `--benchmark generic --field_map`) to the unified
+`{video_id,question,choices,answer,path}` + a `manifest.jsonl`. Videos must be downloaded to
+`--video_dir` first (benchmarks ship QA, not the videos). Field mappings live in
+`rolecompress/benchmarks.py` — verify against the HF dataset viewer if a benchmark updates.
+```bash
+python scripts/00_convert_benchmarks.py --benchmark videomme --split test \
+  --video_dir /data/videomme/videos --out /data/rolecompress
+```
+
+## Baselines (all on the same input-frame-budget axis, same backbone/LoRA)
+- `uniform` — even frames/segment (standard).
+- `remo` — cross-modal redundancy drop (our re-impl; the key competitor).
+- `query` — query-aware frame selection (query-CONDITIONED contrast to our query-agnostic roles).
+- `saliency` — content-saliency frame selection (input-side FastV analogue).
+- `tokenmerge` — uniform frames + spatial downscale (ToMe-video analogue, fewer tokens/frame).
+- `random_role` / `oracle_role` — ablation lower / upper bounds.
+- `rolecompress` — ours.
+
+Honest note: `saliency`/`tokenmerge` are input-side analogues of FastV/token-merge chosen so
+all policies share one budget axis (visual tokens). A true intra-LLM FastV (attention hook) is
+a straightforward appendix add-on and is described in `rolecompress/baselines.py`.
 
 ## The two headline results
 1. **Accuracy–budget Pareto** (all benchmarks): RoleCompress dominates uniform/FastV/ReMo.
@@ -109,7 +129,9 @@ rolecompress/            core package
   asr.py                 faster-whisper + segment alignment
   data.py                jsonl IO + router dataset
   metrics.py             accuracy / budget / FLOPs / synergy subset  (unit-tested)
-scripts/                 01..05 pipeline + plot + slurm launcher
+  baselines.py           query / saliency / tokenmerge / uniform frame-keep policies
+  benchmarks.py          Video-MME / MLVU / LongVideoBench / EgoSchema adapters
+scripts/                 00 converter + 01..05 pipeline + plot + slurm launcher
 configs/default.yaml     defaults
 tests/                   GPU-free logic tests — run first
 EXPERIMENT_PLAN.md       full protocol

@@ -18,11 +18,19 @@ import torch
 
 from rolecompress import segment as seg_mod
 from rolecompress import asr as asr_mod
+from rolecompress import baselines as bl
 from rolecompress.backbone import BackboneConfig, RoleCompressBackbone
 from rolecompress.data import read_jsonl, write_jsonl
 from rolecompress.metrics import EvalAccumulator, mcq_correct, is_synergy_required
 from rolecompress.roles import Role, RoleBudget
 from rolecompress.router import RoleRouter, RouterConfig
+
+# Policy families:
+#   ROLE_POLICIES     -> produce a role per segment, then allocate_frames by budget.
+#   KEEP_POLICIES     -> produce explicit kept frames directly (query/saliency).
+#   tokenmerge        -> uniform frames + spatial downscale (fewer visual tokens/frame).
+ROLE_POLICIES = {"rolecompress", "uniform", "remo", "random_role", "oracle_role"}
+KEEP_POLICIES = {"query", "saliency"}
 
 
 def load_router(path, device):
@@ -74,7 +82,11 @@ def main():
     ap.add_argument("--manifest", required=True)
     ap.add_argument("--out", required=True)
     ap.add_argument("--policy", default="rolecompress",
-                    choices=["rolecompress", "uniform", "remo", "random_role", "oracle_role"])
+                    choices=["rolecompress", "uniform", "remo", "random_role", "oracle_role",
+                             "query", "saliency", "tokenmerge"])
+    ap.add_argument("--keep_total", type=int, default=8,
+                    help="total kept frames for query/saliency/tokenmerge (budget knob; sweep for Pareto)")
+    ap.add_argument("--downscale", type=float, default=2.0, help="tokenmerge spatial downscale factor")
     ap.add_argument("--router_ckpt", default=None)
     ap.add_argument("--lora", default=None)
     ap.add_argument("--model_id", default="Qwen/Qwen3-VL-8B-Instruct")
@@ -127,16 +139,33 @@ def main():
             m = backbone.score_probe(probe, allframes)
             in_syn = is_synergy_required(m.m_text, m.m_vision, m.m_joint, args.tau_hi, args.tau_lo)
 
-        roles = policy_roles(args.policy, backbone, router, device, segs, frames_per_seg, seg_asr,
-                             oracle_margins, (args.tau_hi, args.tau_lo))
-        inputs, vtok, _ = backbone.build_answer_inputs(r["question"], r.get("choices"),
-                                                       frames_per_seg, roles, seg_asr, budget)
+        # dispatch by policy family
+        roles_for_log = None
+        if args.policy in ROLE_POLICIES:
+            roles = policy_roles(args.policy, backbone, router, device, segs, frames_per_seg, seg_asr,
+                                 oracle_margins, (args.tau_hi, args.tau_lo))
+            roles_for_log = roles
+            inputs, vtok, _ = backbone.build_answer_inputs(r["question"], r.get("choices"),
+                                                           frames_per_seg, roles, seg_asr, budget)
+        elif args.policy in KEEP_POLICIES:
+            if args.policy == "query":
+                keep = bl.query_frame_keep(backbone, r["question"], frames_per_seg, args.keep_total)
+            else:  # saliency (~FastV input-side)
+                keep = bl.saliency_frame_keep(frames_per_seg, args.keep_total)
+            inputs, vtok, _ = backbone.build_answer_inputs(r["question"], r.get("choices"),
+                                                           frames_per_seg, None, seg_asr, keep_override=keep)
+        else:  # tokenmerge: uniform frames + spatial downscale
+            per_seg = max(1, args.keep_total // max(1, len(segs)))
+            keep = bl.uniform_frame_keep(frames_per_seg, per_seg)
+            inputs, vtok, _ = backbone.build_answer_inputs(r["question"], r.get("choices"),
+                                                           frames_per_seg, None, seg_asr,
+                                                           keep_override=keep, downscale=args.downscale)
         pred = backbone.generate_answer(inputs, max_new_tokens=16 if r.get("choices") else 64)
         correct = mcq_correct(pred, r["answer"], r.get("choices")) if r.get("choices") else (r["answer"].lower() in pred.lower())
-        acc.add(correct, vtok, in_synergy_subset=in_syn, roles=roles)
+        acc.add(correct, vtok, in_synergy_subset=in_syn, roles=roles_for_log)
         per_item.append({"video_id": vid, "pred": pred, "gold": r["answer"], "correct": correct,
                          "visual_tokens": vtok, "synergy_required": in_syn,
-                         "roles": [rr.short for rr in roles]})
+                         "roles": [rr.short for rr in roles_for_log] if roles_for_log else None})
 
     summ = acc.summary()
     summ.update({"policy": args.policy, "n_low": args.n_low, "n_high": args.n_high})

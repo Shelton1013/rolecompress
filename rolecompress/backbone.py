@@ -111,6 +111,15 @@ class RoleCompressBackbone:
     def _to_pil(frames: Sequence[np.ndarray]) -> List[Image.Image]:
         return [Image.fromarray(f) if not isinstance(f, Image.Image) else f for f in frames]
 
+    @staticmethod
+    def _downscale(frame: np.ndarray, factor: float):
+        """Spatially shrink a frame by `factor` (token-merge baseline). factor<=1 -> no-op."""
+        if factor is None or factor <= 1.0:
+            return frame
+        im = Image.fromarray(frame) if not isinstance(frame, Image.Image) else frame
+        w, h = im.size
+        return im.resize((max(28, int(w / factor)), max(28, int(h / factor))), Image.BILINEAR)
+
     def _video_content(self, frames: Sequence[np.ndarray]) -> dict:
         # both Qwen3-VL and Qwen2.5-VL accept a list of PIL frames under the "video" key
         return {"type": "video", "video": self._to_pil(frames)}
@@ -246,19 +255,30 @@ class RoleCompressBackbone:
         question: str,
         choices: Optional[List[str]],
         seg_frames: Sequence[Sequence[np.ndarray]],
-        seg_roles: Sequence[Role],
+        seg_roles: Optional[Sequence[Role]],
         seg_asr: Sequence[str],
-        budget: RoleBudget,
+        budget: Optional[RoleBudget] = None,
+        keep_override: Optional[Sequence[Sequence[int]]] = None,
+        downscale: float = 1.0,
     ):
-        """Assemble the role-allocated multimodal prompt. Returns (inputs, visual_token_count, messages)."""
-        seg_counts = [len(f) for f in seg_frames]
-        keep_local = allocate_frames(seg_roles, seg_counts, budget)
+        """Assemble the (role- or baseline-) allocated multimodal prompt.
+
+        Frame selection comes from either the role budget (`seg_roles` + `budget`) or an explicit
+        `keep_override` (per-segment local indices, used by the query/saliency baselines).
+        `downscale`>1 spatially shrinks kept frames (the token-merge baseline).
+        Returns (inputs, visual_token_count, messages)."""
+        if keep_override is not None:
+            keep_local = [list(x) for x in keep_override]
+        else:
+            assert seg_roles is not None and budget is not None
+            keep_local = allocate_frames(seg_roles, [len(f) for f in seg_frames], budget)
         kept_frames: List[np.ndarray] = []
         transcript_lines: List[str] = []
-        for i, (frames, role, asr, local_idx) in enumerate(zip(seg_frames, seg_roles, seg_asr, keep_local)):
+        for i, (frames, asr, local_idx) in enumerate(zip(seg_frames, seg_asr, keep_local)):
             for li in local_idx:
-                kept_frames.append(frames[li])
+                kept_frames.append(self._downscale(frames[li], downscale))
             if asr.strip():
+                role = seg_roles[i] if seg_roles is not None else Role.UNIQUE_VISUAL
                 tag = "[speech]" if role in (Role.REDUNDANT, Role.UNIQUE_TEXT) else "[audio]"
                 transcript_lines.append(f"{tag} seg{i}: {asr.strip()}")
         transcript = "\n".join(transcript_lines)
