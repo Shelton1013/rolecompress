@@ -75,6 +75,11 @@ def remo_roles(backbone, frames_per_seg, seg_asr):
     return roles
 
 
+def _drop_synergy(roles):
+    """Ablation: collapse SYNERGISTIC -> UNIQUE_VISUAL (synergy segments lose their dense budget)."""
+    return [Role.UNIQUE_VISUAL if rr == Role.SYNERGISTIC else rr for rr in roles]
+
+
 def policy_roles(policy, backbone, router, device, segs, frames_per_seg, seg_asr,
                  oracle_margins=None, tau=(0.5, 0.0)):
     n = len(segs)
@@ -133,6 +138,11 @@ def main():
     ap.add_argument("--saliency_pick", action="store_true",
                     help="rolecompress/tf: within each kept segment, choose the most SALIENT frames "
                          "(subsumes the saliency baseline's advantage). Recommended ON for our method.")
+    ap.add_argument("--no_synergy", action="store_true",
+                    help="ABLATION: remap SYNERGISTIC->UNIQUE_VISUAL so synergy segments get NO dense "
+                         "budget. Turns rolecompress/tf into redundancy+unique-only (the controlled, "
+                         "same-pipeline stand-in for ReMo-style 'redundancy-drop, no synergy'). "
+                         "Compare rolecompress vs rolecompress --no_synergy to isolate the synergy branch.")
     ap.add_argument("--shard", default="0/1", help="i/N data-parallel eval: run N procs, each CUDA_VISIBLE_DEVICES=i")
     ap.add_argument("--seed", type=int, default=0, help="shuffle seed (keep same across policies/shards)")
     ap.add_argument("--no_shuffle", action="store_true", help="disable the deterministic shuffle (use file order)")
@@ -205,6 +215,8 @@ def main():
             for frames, asr in zip(frames_per_seg, seg_asr):
                 m = backbone.segment_confidence_margins(r["question"], r["choices"], frames, asr, prior=prior)
                 roles.append(assign_role_from_margins(m.m_text, m.m_vision, m.m_joint, args.tau_hi, args.tau_lo))
+            if args.no_synergy:
+                roles = _drop_synergy(roles)
             roles_for_log = roles
             inputs, vtok, _ = backbone.build_answer_inputs(r["question"], r.get("choices"),
                                                            frames_per_seg, roles, seg_asr, budget,
@@ -212,6 +224,8 @@ def main():
         elif args.policy in ROLE_POLICIES:
             roles = policy_roles(args.policy, backbone, router, device, segs, frames_per_seg, seg_asr,
                                  oracle_margins, (args.tau_hi, args.tau_lo))
+            if args.no_synergy:
+                roles = _drop_synergy(roles)
             roles_for_log = roles
             # our method (rolecompress) also picks salient frames within kept segments; naive
             # baselines (uniform/remo/random) keep the even-spaced frames.
