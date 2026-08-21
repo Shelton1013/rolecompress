@@ -18,6 +18,7 @@ Examples:
 import argparse
 import json
 import os
+import re
 
 from rolecompress.benchmarks import ADAPTERS, HF_IDS, generic
 from rolecompress.data import write_jsonl
@@ -34,14 +35,38 @@ def main():
     ap.add_argument("--split", default="test")
     ap.add_argument("--field_map", default=None, help='JSON for --benchmark generic')
     ap.add_argument("--from_jsonl", default=None, help="skip HF; read rows from a local jsonl instead")
+    ap.add_argument("--anno_dir", default=None,
+                    help="LOCAL annotation dir (recurse *.json/*.jsonl); best for already-downloaded "
+                         "benchmarks like MLVU (points at its json/ folder). Skips the HF Hub.")
     ap.add_argument("--limit", type=int, default=0)
     args = ap.parse_args()
     os.makedirs(args.out, exist_ok=True)
 
     adapt = generic(json.loads(args.field_map)) if args.benchmark == "generic" else ADAPTERS[args.benchmark]
 
-    # load rows
-    if args.from_jsonl:
+    # load rows: local annotation dir  >  local jsonl  >  HF Hub
+    if args.anno_dir:
+        import glob
+        rows = []
+        files = sorted(glob.glob(os.path.join(args.anno_dir, "**", "*.json"), recursive=True)) + \
+                sorted(glob.glob(os.path.join(args.anno_dir, "**", "*.jsonl"), recursive=True))
+        for fp in files:
+            task = re.sub(r"^\d+[_\-]?", "", os.path.splitext(os.path.basename(fp))[0])  # e.g. 4_count -> count
+            try:
+                if fp.endswith(".jsonl"):
+                    items = [json.loads(l) for l in open(fp, encoding="utf-8") if l.strip()]
+                else:
+                    data = json.load(open(fp, encoding="utf-8"))
+                    items = data if isinstance(data, list) else \
+                            next((v for v in data.values() if isinstance(v, list)), [])
+            except Exception as e:
+                print(f"[skip anno] {fp}: {e}"); continue
+            for it in items:
+                if isinstance(it, dict):
+                    it.setdefault("question_type", task)      # infer task from filename (MLVU's 9 tasks)
+                    rows.append(it)
+        print(f"loaded {len(rows)} rows from {len(files)} annotation files under {args.anno_dir}")
+    elif args.from_jsonl:
         from rolecompress.data import read_jsonl
         rows = list(read_jsonl(args.from_jsonl))
     else:
