@@ -124,6 +124,7 @@ def main():
                     help="dir to cache ASR per video (reused across policies/budgets). "
                          "Default: <out_dir>/asr_cache. Set '' to disable.")
     ap.add_argument("--no_asr", action="store_true", help="skip ASR (fast; tests video-only path)")
+    ap.add_argument("--shard", default="0/1", help="i/N data-parallel eval: run N procs, each CUDA_VISIBLE_DEVICES=i")
     args = ap.parse_args()
     if args.asr_cache is None:
         args.asr_cache = os.path.join(os.path.dirname(args.out) or ".", "asr_cache")
@@ -143,6 +144,10 @@ def main():
     rows = list(read_jsonl(args.qa_eval))
     if args.limit:
         rows = rows[:args.limit]
+    si, sn = map(int, args.shard.split("/"))
+    if sn > 1:
+        rows = [r for k, r in enumerate(rows) if k % sn == si]
+        print(f"shard {si}/{sn}: {len(rows)} rows")
 
     for r in rows:
         vid = r.get("video_id") or r.get("video")
