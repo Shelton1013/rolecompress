@@ -68,10 +68,18 @@ class VideoReader:
         return [batch[i] for i in range(batch.shape[0])]
 
 
-def segment_video(path: str, win: float = 6.0, fps: float = 1.0, max_per_seg: int = 8):
-    """High-level: path -> (segments, frames_per_segment)."""
+def segment_video(path: str, win: float = 6.0, fps: float = 1.0, max_per_seg: int = 8,
+                  max_segments: int = 64):
+    """High-level: path -> (segments, frames_per_segment).
+
+    `max_segments` caps the number of segments regardless of video length by adaptively
+    enlarging the window (segment ops are O(#segments) per video, so this keeps cost bounded
+    on hour-long videos)."""
     vr = VideoReader(path)
-    spans = make_windows(vr.duration, win=win)
+    w = win
+    if max_segments and vr.duration > 0 and (vr.duration / win) > max_segments:
+        w = vr.duration / max_segments
+    spans = make_windows(vr.duration, win=w)
     segs = sample_frame_times(spans, fps=fps, max_per_seg=max_per_seg)
     frames_per_seg = [vr.frames_at(s.frame_times) for s in segs]
     return segs, frames_per_seg, vr.duration

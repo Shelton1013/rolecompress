@@ -106,6 +106,7 @@ def main():
     ap.add_argument("--keep_total", type=int, default=8,
                     help="total kept frames for query/saliency/tokenmerge (budget knob; sweep for Pareto)")
     ap.add_argument("--downscale", type=float, default=2.0, help="tokenmerge spatial downscale factor")
+    ap.add_argument("--max_segments", type=int, default=64, help="cap segments per video (adaptive window); keeps per-segment cost bounded on long videos")
     ap.add_argument("--max_frames", type=int, default=32,
                     help="TOTAL frame cap = the main budget knob. Sweep 8/16/32/64 to trace the Pareto "
                          "(also set --keep_total to the same value for query/saliency/tokenmerge).")
@@ -158,7 +159,7 @@ def main():
         vid = r.get("video_id") or r.get("video")
         path = manifest.get(vid) or r.get("path")
         try:
-            segs, frames_per_seg, dur = seg_mod.segment_video(path, win=args.win, fps=args.fps)
+            segs, frames_per_seg, dur = seg_mod.segment_video(path, win=args.win, fps=args.fps, max_segments=args.max_segments)
             if args.no_asr:
                 seg_asr = [""] * len(segs)
             elif r.get("seg_asr"):
