@@ -32,11 +32,36 @@ def _strip_letter_prefix(opt: str) -> str:
     return re.sub(r"^\s*[A-H][\.\):]\s*", "", str(opt)).strip()
 
 
+_VID_EXT = (".mp4", ".mkv", ".webm", ".avi", ".mov", ".ts")
+_VIDEO_INDEX: Dict[str, Dict[str, str]] = {}
+
+
+def _index_videos(video_dir: str) -> Dict[str, str]:
+    """Walk video_dir RECURSIVELY once and map both filename and stem -> full path, so nested
+    layouts like MLVU's video/<task>/<name>.mp4 resolve by basename."""
+    if video_dir in _VIDEO_INDEX:
+        return _VIDEO_INDEX[video_dir]
+    idx: Dict[str, str] = {}
+    for root, _dirs, files in os.walk(video_dir):
+        for f in files:
+            if f.lower().endswith(_VID_EXT):
+                full = os.path.join(root, f)
+                idx.setdefault(f, full)                       # by filename
+                idx.setdefault(os.path.splitext(f)[0], full)  # by stem
+    _VIDEO_INDEX[video_dir] = idx
+    return idx
+
+
 def _resolve_path(video_dir: str, *candidates: str) -> Optional[str]:
+    idx = _index_videos(video_dir)
     for c in candidates:
         if not c:
             continue
-        for ext in ("", ".mp4", ".mkv", ".webm", ".avi"):
+        c = str(c)
+        for key in (c, os.path.basename(c), os.path.splitext(os.path.basename(c))[0]):
+            if key in idx:
+                return idx[key]
+        for ext in ("",) + _VID_EXT:                          # flat fallback
             p = os.path.join(video_dir, c + ext)
             if os.path.exists(p):
                 return p
@@ -72,7 +97,9 @@ def mlvu(row: Dict, video_dir: str) -> Optional[Dict]:
     path = _resolve_path(video_dir, vid, os.path.basename(str(vid)))
     if not (choices and path):
         return None
-    return {"video_id": vid, "question": row["question"], "choices": choices, "answer": ans, "path": path}
+    task = row.get("question_type") or row.get("task_type") or ""
+    return {"video_id": vid, "question": row["question"], "choices": choices, "answer": ans,
+            "path": path, "task_type": task}
 
 
 def longvideobench(row: Dict, video_dir: str) -> Optional[Dict]:
