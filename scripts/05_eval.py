@@ -134,6 +134,8 @@ def main():
                     help="rolecompress/tf: within each kept segment, choose the most SALIENT frames "
                          "(subsumes the saliency baseline's advantage). Recommended ON for our method.")
     ap.add_argument("--shard", default="0/1", help="i/N data-parallel eval: run N procs, each CUDA_VISIBLE_DEVICES=i")
+    ap.add_argument("--seed", type=int, default=0, help="shuffle seed (keep same across policies/shards)")
+    ap.add_argument("--no_shuffle", action="store_true", help="disable the deterministic shuffle (use file order)")
     args = ap.parse_args()
     if args.asr_cache is None:
         args.asr_cache = os.path.join(os.path.dirname(args.out) or ".", "asr_cache")
@@ -153,6 +155,10 @@ def main():
     acc = EvalAccumulator()
     per_item = []
     rows = list(read_jsonl(args.qa_eval))
+    if not args.no_shuffle:
+        # deterministic shuffle so --limit is a representative cross-task sample (MLVU tasks are
+        # concatenated in file order) and shards stay consistent across policies/runs.
+        random.Random(args.seed).shuffle(rows)
     if args.limit:
         rows = rows[:args.limit]
     si, sn = map(int, args.shard.split("/"))
