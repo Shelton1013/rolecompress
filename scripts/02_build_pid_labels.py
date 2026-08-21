@@ -42,6 +42,8 @@ def main():
     ap.add_argument("--temperature", type=float, default=1.0)
     ap.add_argument("--calibrate_only", action="store_true",
                     help="skip scoring; read a merged *.margins.jsonl and (re)emit labels")
+    ap.add_argument("--reader_cache", type=int, default=16,
+                    help="max open decord VideoReaders kept in memory (LRU). Lower if host OOM.")
     args = ap.parse_args()
 
     os.makedirs(os.path.dirname(args.out) or ".", exist_ok=True)
@@ -68,12 +70,19 @@ def main():
     # scoring path
     manifest = {r["video_id"]: r["path"] for r in read_jsonl(args.manifest)}
     backbone = RoleCompressBackbone(BackboneConfig(model_id=(args.model_path or args.model_id)))
-    readers = {}
+    from collections import OrderedDict
+    readers = OrderedDict()  # bounded LRU: unbounded caching of decord readers -> host OOM ("Killed")
 
     def frames_for(video_id, start, end):
-        if video_id not in readers:
-            readers[video_id] = seg_mod.VideoReader(manifest[video_id])
-        vr = readers[video_id]
+        vr = readers.get(video_id)
+        if vr is None:
+            vr = seg_mod.VideoReader(manifest[video_id])
+            readers[video_id] = vr
+            while len(readers) > args.reader_cache:
+                _vid, _vr = readers.popitem(last=False)  # evict least-recently-used
+                del _vr  # drop the decord reader so its buffers are freed
+        else:
+            readers.move_to_end(video_id)
         n = max(1, min(args.max_per_seg, int(round((end - start) * args.fps))))
         step = (end - start) / n
         times = [start + step * (k + 0.5) for k in range(n)]
