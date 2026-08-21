@@ -102,11 +102,16 @@ This is a **soft** target: we store the continuous vector `(mT, mV, mJ)` and a 4
 2. **FastV** (attention-based token pruning at a mid LLM layer).
 3. **Token-merge / ToMe-video** (bilinear/similarity merge).
 4. **Query-aware selection** (a keyframe selector, e.g. re-implement a simple conditional-MI / relevance selector).
-5. **ReMo-style redundancy drop** (cross-modal cosine similarity drop, our re-implementation) — *the key baseline*.
+4b. **GIFT** (2603.25072, *Global Irreplaceability Frame Targeting*) — **STRONG query-aware keyframe selector, main-table required baseline.** Reports on **Qwen2.5-VL-7B (our backbone)** → fair same-backbone comparison is possible; on MLVU 8f it lifts uniform 56.4 → **65.8**. Two structural differences we exploit, NOT raw MLVU accuracy (a dedicated query-aware selector will likely lead single-query MLVU acc — do not claim to beat it there):
+   - **query-aware, per-question recompute** vs our **query-agnostic, compute-once-reuse-all** → we win on *amortized* cost when a video carries many questions (see §7 amortized-cost figure).
+   - **vision-only** (no audio/ASR) → structurally cannot exploit cross-modal redundancy/synergy → we win on the AV/synergy benchmarks (Daily-Omni / WorldSense), where GIFT/AKS/FastV have no mechanism.
+5. **ReMo-style redundancy drop** (cross-modal cosine similarity drop, our re-implementation) — *the key baseline*. NOTE: ReMo is **not open-sourced**; the rigorous, controlled stand-in is our own `--no_synergy` ablation (rolecompress with SYNERGISTIC→UNIQUE_VISUAL = redundancy+unique only, same pipeline/backbone), which isolates the synergy branch without depending on an external re-impl.
 6. **Random role** (ablation: router replaced by random role assignment) — isolates the value of learned roles.
 7. **Oracle role** (roles from the self-sup labels at test time using gold answers) — upper bound.
 
 All share the same frozen backbone + the same LoRA (or no-LoRA variant) so the comparison is the *allocation policy*, not the backbone.
+
+> **Positioning vs query-aware SOTA (GIFT/Q-Frame/FOCUS/AKS):** these are strong on single-query vision-centric MLVU because they see the question. Our two defensible axes are (a) **query-agnostic amortization** and (b) **cross-modal roles**. The paper's headline is NOT "top MLVU acc" but the **amortized-cost Pareto** + **synergy crossover**; on MLVU our target is *do-no-harm at a single video encode*.
 
 ---
 
@@ -116,6 +121,7 @@ All share the same frozen backbone + the same LoRA (or no-LoRA variant) so the c
 - **Visual budget:** effective visual tokens (mean), and **prefill FLOPs proxy** (attention ∝ N²).
 - **Latency / TTFT** and peak memory (measured on the A6000 node).
 - **Pareto:** accuracy vs visual tokens (the headline plot).
+- **Amortized-cost figure (vs query-aware SOTA like GIFT):** cumulative compute (frame-encode + selection/probe passes) to answer **Q questions on the same video**, vs accuracy. Query-aware selectors (GIFT) pay their selection cost **per question** (re-encode all frames × Q); RoleCompress pays the role pass **once** and reuses. Curve crosses over as Q grows — the deployment-realistic regime (MLVU has many questions per video). This is the figure that answers "GIFT beats us on single-query MLVU acc."
 - **Synergy-subset accuracy** vs budget (the crossover plot; RoleCompress ≫ redundancy-only at low budget).
 - **Role stats:** distribution of R/U/S across datasets; correlation of predicted synergy fraction with a PID estimate (GPID, 2510.04417) on a subsample — ties the empirical result to theory.
 
