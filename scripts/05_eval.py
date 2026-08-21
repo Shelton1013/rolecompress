@@ -40,6 +40,25 @@ def load_router(path, device):
     return model
 
 
+def _cached_asr(vid, path, cache_dir):
+    """Transcribe once, cache to disk, reuse across policies/budgets (ASR on long videos is slow)."""
+    if not cache_dir:
+        return asr_mod.transcribe(path)
+    os.makedirs(cache_dir, exist_ok=True)
+    cp = os.path.join(cache_dir, str(vid).replace("/", "_").replace("\\", "_") + ".json")
+    if os.path.exists(cp):
+        try:
+            return json.load(open(cp, encoding="utf-8"))
+        except Exception:
+            pass
+    utt = asr_mod.transcribe(path)
+    try:
+        json.dump(utt, open(cp, "w", encoding="utf-8"), ensure_ascii=False)
+    except Exception:
+        pass
+    return utt
+
+
 def remo_roles(backbone, frames_per_seg, seg_asr):
     """ReMo-style baseline: a segment is REDUNDANT if its visual mean feature is highly
     similar to something already covered (here: to its own ASR text embedding, cross-modal),
@@ -101,7 +120,13 @@ def main():
     ap.add_argument("--tau_hi", type=float, default=0.5)
     ap.add_argument("--tau_lo", type=float, default=0.0)
     ap.add_argument("--limit", type=int, default=0)
+    ap.add_argument("--asr_cache", default=None,
+                    help="dir to cache ASR per video (reused across policies/budgets). "
+                         "Default: <out_dir>/asr_cache. Set '' to disable.")
+    ap.add_argument("--no_asr", action="store_true", help="skip ASR (fast; tests video-only path)")
     args = ap.parse_args()
+    if args.asr_cache is None:
+        args.asr_cache = os.path.join(os.path.dirname(args.out) or ".", "asr_cache")
 
     device = "cuda" if torch.cuda.is_available() else "cpu"
     manifest = {r["video_id"]: r["path"] for r in read_jsonl(args.manifest)}
@@ -124,8 +149,12 @@ def main():
         path = manifest.get(vid) or r.get("path")
         try:
             segs, frames_per_seg, dur = seg_mod.segment_video(path, win=args.win, fps=args.fps)
-            utt = asr_mod.transcribe(path) if not r.get("seg_asr") else []
-            seg_asr = asr_mod.align_to_segments(utt, segs) if utt else r.get("seg_asr", [""] * len(segs))
+            if args.no_asr:
+                seg_asr = [""] * len(segs)
+            elif r.get("seg_asr"):
+                seg_asr = r["seg_asr"]
+            else:
+                seg_asr = asr_mod.align_to_segments(_cached_asr(vid, path, args.asr_cache), segs)
         except Exception as e:
             print(f"[skip] {vid}: {e}"); continue
 
