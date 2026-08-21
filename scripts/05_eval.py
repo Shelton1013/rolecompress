@@ -82,8 +82,8 @@ def main():
     ap.add_argument("--manifest", required=True)
     ap.add_argument("--out", required=True)
     ap.add_argument("--policy", default="rolecompress",
-                    choices=["rolecompress", "uniform", "remo", "random_role", "oracle_role",
-                             "query", "saliency", "tokenmerge"])
+                    choices=["rolecompress", "rolecompress_tf", "uniform", "remo", "random_role",
+                             "oracle_role", "query", "saliency", "tokenmerge"])
     ap.add_argument("--keep_total", type=int, default=8,
                     help="total kept frames for query/saliency/tokenmerge (budget knob; sweep for Pareto)")
     ap.add_argument("--downscale", type=float, default=2.0, help="tokenmerge spatial downscale factor")
@@ -142,7 +142,21 @@ def main():
 
         # dispatch by policy family
         roles_for_log = None
-        if args.policy in ROLE_POLICIES:
+        if args.policy == "rolecompress_tf":
+            # TRAINING-FREE ablation: roles from per-segment answer-confidence probes (no router,
+            # no LoRA). Detects synergy via confidence divergence but is query-dependent and costs
+            # 3 forward passes per segment -> motivates the learned query-agnostic router.
+            from rolecompress.roles import assign_role_from_margins
+            if not r.get("choices"):
+                print(f"[skip] {vid}: rolecompress_tf needs MCQ choices"); continue
+            roles = []
+            for frames, asr in zip(frames_per_seg, seg_asr):
+                m = backbone.segment_confidence_margins(r["question"], r["choices"], frames, asr)
+                roles.append(assign_role_from_margins(m.m_text, m.m_vision, m.m_joint, args.tau_hi, args.tau_lo))
+            roles_for_log = roles
+            inputs, vtok, _ = backbone.build_answer_inputs(r["question"], r.get("choices"),
+                                                           frames_per_seg, roles, seg_asr, budget)
+        elif args.policy in ROLE_POLICIES:
             roles = policy_roles(args.policy, backbone, router, device, segs, frames_per_seg, seg_asr,
                                  oracle_margins, (args.tau_hi, args.tau_lo))
             roles_for_log = roles

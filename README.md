@@ -109,7 +109,11 @@ python scripts/00_convert_benchmarks.py --benchmark videomme --split test \
 - `saliency` — content-saliency frame selection (input-side FastV analogue).
 - `tokenmerge` — uniform frames + spatial downscale (ToMe-video analogue, fewer tokens/frame).
 - `random_role` / `oracle_role` — ablation lower / upper bounds.
-- `rolecompress` — ours.
+- `rolecompress_tf` — **training-free variant** (ablation): roles from per-segment answer-confidence
+  probes, no router, no LoRA. Zero training (apples-to-apples vs training-free FastV/ReMo), but
+  query-dependent and 3 forward passes/segment — the trained router amortizes exactly this cost.
+  Needs MCQ; pass no `--lora`. Thresholds `--tau_hi/--tau_lo` may need calibration for confidence margins.
+- `rolecompress` — ours (trained router + LoRA).
 
 Honest note: `saliency`/`tokenmerge` are input-side analogues of FastV/token-merge chosen so
 all policies share one budget axis (visual tokens). A true intra-LLM FastV (attention hook) is

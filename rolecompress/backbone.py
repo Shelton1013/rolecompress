@@ -206,6 +206,36 @@ class RoleCompressBackbone:
     def _letter_id(self, letter: str) -> int:
         return self.tokenizer.encode(letter, add_special_tokens=False)[0]
 
+    # ---- training-free role signal: per-segment answer CONFIDENCE (no gold, no training) ----
+    @torch.no_grad()
+    def segment_confidence_margins(self, question: str, choices: List[str],
+                                   frames: Sequence[np.ndarray], asr: str) -> ProbeMargins:
+        """For the TRAINING-FREE variant: score how confidently a single segment can answer the
+        (MCQ) question under text-only / vision-only / joint, using logit-margin CONFIDENCE
+        (top1 - top2 of the choice distribution) instead of gold correctness. No labels, no
+        training. Query-DEPENDENT and costs 3 forward passes per segment -> this cost is exactly
+        what the learned query-agnostic Router amortizes."""
+        mt = self._conf_pass(question, choices, None, asr, use_text=True)
+        mv = self._conf_pass(question, choices, frames, "", use_text=False)
+        mj = self._conf_pass(question, choices, frames, asr, use_text=True)
+        return ProbeMargins(m_text=mt, m_vision=mv, m_joint=mj)
+
+    @torch.no_grad()
+    def _conf_pass(self, question: str, choices: List[str],
+                   frames: Optional[Sequence[np.ndarray]], ctx: str, use_text: bool) -> float:
+        content = []
+        if frames is not None and len(frames) > 0:
+            content.append(self._video_content(frames))
+        content.append({"type": "text", "text": _probe_prompt(question, ctx if use_text else "", choices)})
+        inputs = self._build_inputs([{"role": "user", "content": content}])
+        nl = self.model(**inputs).logits[0, -1]
+        ids = [self._letter_id(chr(ord("A") + i)) for i in range(len(choices))]
+        logp = torch.log_softmax(torch.stack([nl[i] for i in ids]), dim=-1)
+        if logp.numel() < 2:
+            return float(logp.max().item())
+        top = torch.topk(logp, 2).values
+        return float((top[0] - top[1]).item())      # confidence margin (higher = more sure)
+
     @torch.no_grad()
     def _open_loglik(self, messages, gold_text: str) -> float:
         prompt_inputs = self._build_inputs(messages)

@@ -127,6 +127,7 @@ All share the same frozen backbone + the same LoRA (or no-LoRA variant) so the c
 |---|---|
 | remove Synergy branch (only R/U) | does keeping synergy actually matter? (expect big drop on synergy subset) |
 | remove Redundant drop (only U/S) | where does the efficiency come from? |
+| **training-free variant** (`rolecompress_tf`) | roles from per-segment answer-confidence probes (no router, no LoRA). Shows the info-role idea works with **zero training** — but it is query-dependent and costs 3 forward passes/segment; the trained Router recovers it query-agnostically and cheaply. This is the apples-to-apples row vs training-free FastV/ReMo. |
 | random / oracle role | value of the learned router; headroom |
 | self-sup label source: joint-head-disagreement vs attention-based vs caption-length heuristic | is the head-disagreement signal necessary? |
 | soft (KL) vs hard (argmax) role targets | |
