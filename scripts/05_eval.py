@@ -130,6 +130,9 @@ def main():
     ap.add_argument("--no_asr", action="store_true", help="skip ASR (fast; tests video-only path)")
     ap.add_argument("--no_prior_correct", action="store_true",
                     help="rolecompress_tf: disable language-prior correction of the confidence margins")
+    ap.add_argument("--saliency_pick", action="store_true",
+                    help="rolecompress/tf: within each kept segment, choose the most SALIENT frames "
+                         "(subsumes the saliency baseline's advantage). Recommended ON for our method.")
     ap.add_argument("--shard", default="0/1", help="i/N data-parallel eval: run N procs, each CUDA_VISIBLE_DEVICES=i")
     args = ap.parse_args()
     if args.asr_cache is None:
@@ -198,13 +201,18 @@ def main():
                 roles.append(assign_role_from_margins(m.m_text, m.m_vision, m.m_joint, args.tau_hi, args.tau_lo))
             roles_for_log = roles
             inputs, vtok, _ = backbone.build_answer_inputs(r["question"], r.get("choices"),
-                                                           frames_per_seg, roles, seg_asr, budget)
+                                                           frames_per_seg, roles, seg_asr, budget,
+                                                           saliency_pick=args.saliency_pick)
         elif args.policy in ROLE_POLICIES:
             roles = policy_roles(args.policy, backbone, router, device, segs, frames_per_seg, seg_asr,
                                  oracle_margins, (args.tau_hi, args.tau_lo))
             roles_for_log = roles
+            # our method (rolecompress) also picks salient frames within kept segments; naive
+            # baselines (uniform/remo/random) keep the even-spaced frames.
+            sp = args.saliency_pick and args.policy == "rolecompress"
             inputs, vtok, _ = backbone.build_answer_inputs(r["question"], r.get("choices"),
-                                                           frames_per_seg, roles, seg_asr, budget)
+                                                           frames_per_seg, roles, seg_asr, budget,
+                                                           saliency_pick=sp)
         elif args.policy in KEEP_POLICIES:
             if args.policy == "query":
                 keep = bl.query_frame_keep(backbone, r["question"], frames_per_seg, args.keep_total)

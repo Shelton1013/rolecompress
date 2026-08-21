@@ -43,20 +43,32 @@ def _global_topk_to_local(scores_per_seg: Sequence[Sequence[float]], keep_total:
     return out
 
 
+def frame_saliency_scores(frames: Sequence[np.ndarray]) -> List[float]:
+    """Per-frame saliency = temporal change (L1 diff vs previous frame) + spatial detail (gradient)."""
+    scores: List[float] = []
+    prev = None
+    for f in frames:
+        g = f.astype(np.float32).mean(-1)
+        detail = float(np.abs(np.diff(g, axis=0)).mean() + np.abs(np.diff(g, axis=1)).mean())
+        change = float(np.abs(g - prev).mean()) if prev is not None else detail
+        scores.append(0.5 * detail + 0.5 * change)
+        prev = g
+    return scores
+
+
+def top_salient_local(frames: Sequence[np.ndarray], k: int) -> List[int]:
+    """Local indices of the top-`k` most salient frames within one segment (sorted)."""
+    if k <= 0 or not frames:
+        return []
+    if k >= len(frames):
+        return list(range(len(frames)))
+    sc = frame_saliency_scores(frames)
+    return sorted(sorted(range(len(frames)), key=lambda j: -sc[j])[:k])
+
+
 def saliency_frame_keep(seg_frames: Sequence[Sequence[np.ndarray]], keep_total: int) -> List[List[int]]:
-    """Score each frame by temporal change (L1 diff vs previous frame in its segment) + detail
-    (spatial gradient magnitude). Keep the globally top `keep_total`."""
-    scores: List[List[float]] = []
-    for frames in seg_frames:
-        seg_scores = []
-        prev = None
-        for f in frames:
-            g = f.astype(np.float32).mean(-1)
-            detail = float(np.abs(np.diff(g, axis=0)).mean() + np.abs(np.diff(g, axis=1)).mean())
-            change = float(np.abs(g - prev).mean()) if prev is not None else detail
-            seg_scores.append(0.5 * detail + 0.5 * change)
-            prev = g
-        scores.append(seg_scores)
+    """Score each frame by saliency; keep the globally top `keep_total`."""
+    scores = [frame_saliency_scores(frames) for frames in seg_frames]
     return _global_topk_to_local(scores, keep_total)
 
 

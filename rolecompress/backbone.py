@@ -322,6 +322,7 @@ class RoleCompressBackbone:
         budget: Optional[RoleBudget] = None,
         keep_override: Optional[Sequence[Sequence[int]]] = None,
         downscale: float = 1.0,
+        saliency_pick: bool = False,
     ):
         """Assemble the (role- or baseline-) allocated multimodal prompt.
 
@@ -334,6 +335,10 @@ class RoleCompressBackbone:
         else:
             assert seg_roles is not None and budget is not None
             keep_local = allocate_frames(seg_roles, [len(f) for f in seg_frames], budget)
+        if saliency_pick:
+            # keep the same per-segment COUNT, but choose the most salient frames within each segment
+            from .baselines import top_salient_local
+            keep_local = [top_salient_local(frames, len(idxs)) for frames, idxs in zip(seg_frames, keep_local)]
         kept_frames: List[np.ndarray] = []
         transcript_lines: List[str] = []
         for i, (frames, asr, local_idx) in enumerate(zip(seg_frames, seg_asr, keep_local)):
