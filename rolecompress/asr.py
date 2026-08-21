@@ -7,6 +7,7 @@ ASR text used as the cheap dense modality.
 """
 from __future__ import annotations
 
+import os
 from typing import Dict, List, Sequence
 
 _model = None
@@ -27,12 +28,20 @@ def _get_model(size: str = "large-v3", device: str = "auto", compute_type: str =
 
 
 def transcribe(audio_or_video_path: str, language: str = None, size: str = "large-v3") -> List[Dict]:
+    """Returns ASR utterances, or [] if the video has NO audio stream / undecodable audio
+    (common for silent egocentric clips) -> the caller then proceeds on the video-only path
+    instead of dropping the whole video."""
     model = _get_model(size)
-    segs, _info = model.transcribe(
-        audio_or_video_path, language=language, vad_filter=True, beam_size=1,
-        condition_on_previous_text=False, word_timestamps=False,
-    )
-    return [{"start": round(s.start, 2), "end": round(s.end, 2), "text": s.text.strip()} for s in segs]
+    try:
+        segs, _info = model.transcribe(
+            audio_or_video_path, language=language, vad_filter=True, beam_size=1,
+            condition_on_previous_text=False, word_timestamps=False,
+        )
+        return [{"start": round(s.start, 2), "end": round(s.end, 2), "text": s.text.strip()} for s in segs]
+    except Exception as e:
+        print(f"[asr] {os.path.basename(str(audio_or_video_path))}: no/undecodable audio "
+              f"({type(e).__name__}) -> empty transcript (video-only)")
+        return []
 
 
 def align_to_segments(utterances: Sequence[Dict], seg_spans: Sequence) -> List[str]:
