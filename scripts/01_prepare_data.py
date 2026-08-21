@@ -26,17 +26,17 @@ from rolecompress.data import read_jsonl, write_jsonl
 import torch
 
 
-def make_cloze_probe(caption: str, distractor_pool):
-    """Turn a segment caption into a 4-way MCQ: gold=this caption gist, distractors=other segments."""
+def make_cloze_probe(caption: str, distractor_pool, question: str = "Which best describes what happens in this segment?"):
+    """Turn a segment caption (or ASR line) into a 4-way MCQ: gold=this segment, distractors=other segments."""
     gold = caption.strip()
-    if len(gold) < 4 or len(distractor_pool) < 3:
+    pool = [d for d in distractor_pool if d.strip() != gold]
+    if len(gold) < 8 or len(pool) < 3:
         return None
-    distractors = random.sample([d for d in distractor_pool if d != gold], 3)
+    distractors = random.sample(pool, 3)
     choices = [gold] + distractors
     random.shuffle(choices)
     letter = chr(ord("A") + choices.index(gold))
-    return {"question": "Which best describes what happens in this segment?",
-            "choices": choices, "answer": letter}
+    return {"question": question, "choices": choices, "answer": letter}
 
 
 def main():
@@ -101,6 +101,19 @@ def main():
                 probe_rows.append({"video_id": vid, "seg_index": s_idx, "seg_start": segs[s_idx].start,
                                    "seg_end": segs[s_idx].end, "question": qa["question"],
                                    "gold": qa["answer"], "choices": qa.get("choices"), "asr_text": seg_asr[s_idx]})
+        else:
+            # fallback: build probes from ASR speech (any video with speech works -> good for small
+            # validation runs with no caption/qa annotation). Gold = this segment's line; distractors
+            # = other segments' lines. Needs >=4 distinct speech segments.
+            pool = [a.strip() for a in seg_asr if len(a.strip()) >= 8]
+            if len(pool) >= 4:
+                for s in segs:
+                    line = seg_asr[s.index].strip()
+                    mcq = make_cloze_probe(line, pool, question="Which line is spoken in this segment?")
+                    if mcq:
+                        probe_rows.append({"video_id": vid, "seg_index": s.index, "seg_start": s.start, "seg_end": s.end,
+                                           "question": mcq["question"], "gold": mcq["answer"], "choices": mcq["choices"],
+                                           "asr_text": seg_asr[s.index]})
 
         # cache router features
         if backbone is not None:
