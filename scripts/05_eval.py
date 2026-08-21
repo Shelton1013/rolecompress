@@ -106,6 +106,9 @@ def main():
     ap.add_argument("--keep_total", type=int, default=8,
                     help="total kept frames for query/saliency/tokenmerge (budget knob; sweep for Pareto)")
     ap.add_argument("--downscale", type=float, default=2.0, help="tokenmerge spatial downscale factor")
+    ap.add_argument("--max_frames", type=int, default=32,
+                    help="TOTAL frame cap = the main budget knob. Sweep 8/16/32/64 to trace the Pareto "
+                         "(also set --keep_total to the same value for query/saliency/tokenmerge).")
     ap.add_argument("--router_ckpt", default=None)
     ap.add_argument("--lora", default=None)
     ap.add_argument("--model_id", default="Qwen/Qwen2.5-VL-7B-Instruct")
@@ -134,10 +137,12 @@ def main():
     backbone = RoleCompressBackbone(BackboneConfig(model_id=(args.model_path or args.model_id)), lora_adapter_path=args.lora)
     router = load_router(args.router_ckpt, device) if (args.policy == "rolecompress" and args.router_ckpt) else None
 
-    budget = RoleBudget(n_unique_visual=args.n_low, n_synergistic=args.n_high)
+    budget = RoleBudget(n_unique_visual=args.n_low, n_synergistic=args.n_high,
+                        max_total_frames=args.max_frames, min_total_frames=min(4, args.max_frames))
     if args.policy == "uniform":
         budget = RoleBudget(n_redundant=args.uniform_frames, n_unique_text=args.uniform_frames,
-                            n_unique_visual=args.uniform_frames, n_synergistic=args.uniform_frames)
+                            n_unique_visual=args.uniform_frames, n_synergistic=args.uniform_frames,
+                            max_total_frames=args.max_frames, min_total_frames=min(4, args.max_frames))
 
     acc = EvalAccumulator()
     per_item = []
