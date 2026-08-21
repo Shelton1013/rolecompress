@@ -208,16 +208,24 @@ class RoleCompressBackbone:
 
     # ---- training-free role signal: per-segment answer CONFIDENCE (no gold, no training) ----
     @torch.no_grad()
+    def question_prior_confidence(self, question: str, choices: List[str]) -> float:
+        """Confidence of the MCQ from question+choices ONLY (no video, no ASR) = the language
+        prior. Subtract this from the per-segment margins so that 'text/vision looks confident
+        purely by guessing the MCQ' does NOT get mislabeled as informative. Compute once/question."""
+        return self._conf_pass(question, choices, None, "", use_text=False)
+
+    @torch.no_grad()
     def segment_confidence_margins(self, question: str, choices: List[str],
-                                   frames: Sequence[np.ndarray], asr: str) -> ProbeMargins:
+                                   frames: Sequence[np.ndarray], asr: str, prior: float = 0.0) -> ProbeMargins:
         """For the TRAINING-FREE variant: score how confidently a single segment can answer the
         (MCQ) question under text-only / vision-only / joint, using logit-margin CONFIDENCE
-        (top1 - top2 of the choice distribution) instead of gold correctness. No labels, no
-        training. Query-DEPENDENT and costs 3 forward passes per segment -> this cost is exactly
-        what the learned query-agnostic Router amortizes."""
-        mt = self._conf_pass(question, choices, None, asr, use_text=True)
-        mv = self._conf_pass(question, choices, frames, "", use_text=False)
-        mj = self._conf_pass(question, choices, frames, asr, use_text=True)
+        (top1 - top2 of the choice distribution) instead of gold correctness. `prior` (the
+        question-only language-prior confidence) is subtracted to measure the INFORMATION GAIN of
+        each modality over pure guessing -> prevents over-labeling segments REDUNDANT/UNIQUE_TEXT.
+        No labels, no training. Query-dependent, 3 passes/segment -> what the Router amortizes."""
+        mt = self._conf_pass(question, choices, None, asr, use_text=True) - prior
+        mv = self._conf_pass(question, choices, frames, "", use_text=False) - prior
+        mj = self._conf_pass(question, choices, frames, asr, use_text=True) - prior
         return ProbeMargins(m_text=mt, m_vision=mv, m_joint=mj)
 
     @torch.no_grad()

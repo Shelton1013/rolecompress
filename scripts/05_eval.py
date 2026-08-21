@@ -128,6 +128,8 @@ def main():
                     help="dir to cache ASR per video (reused across policies/budgets). "
                          "Default: <out_dir>/asr_cache. Set '' to disable.")
     ap.add_argument("--no_asr", action="store_true", help="skip ASR (fast; tests video-only path)")
+    ap.add_argument("--no_prior_correct", action="store_true",
+                    help="rolecompress_tf: disable language-prior correction of the confidence margins")
     ap.add_argument("--shard", default="0/1", help="i/N data-parallel eval: run N procs, each CUDA_VISIBLE_DEVICES=i")
     args = ap.parse_args()
     if args.asr_cache is None:
@@ -189,9 +191,10 @@ def main():
             from rolecompress.roles import assign_role_from_margins
             if not r.get("choices"):
                 print(f"[skip] {vid}: rolecompress_tf needs MCQ choices"); continue
+            prior = 0.0 if args.no_prior_correct else backbone.question_prior_confidence(r["question"], r["choices"])
             roles = []
             for frames, asr in zip(frames_per_seg, seg_asr):
-                m = backbone.segment_confidence_margins(r["question"], r["choices"], frames, asr)
+                m = backbone.segment_confidence_margins(r["question"], r["choices"], frames, asr, prior=prior)
                 roles.append(assign_role_from_margins(m.m_text, m.m_vision, m.m_joint, args.tau_hi, args.tau_lo))
             roles_for_log = roles
             inputs, vtok, _ = backbone.build_answer_inputs(r["question"], r.get("choices"),
