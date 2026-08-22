@@ -192,6 +192,7 @@ def main():
 
         in_syn = bool(r.get("synergy_required", False))
         oracle_margins = None
+        syn_margins = None
         if args.tag_synergy or args.policy == "oracle_role":
             # 3 frozen passes at the QA level (whole-video probe)
             from rolecompress.pid_labels import SegmentProbe
@@ -200,6 +201,9 @@ def main():
             allframes = [f for fs in frames_per_seg for f in fs][:32]
             m = backbone.score_probe(probe, allframes)
             in_syn = is_synergy_required(m.m_text, m.m_vision, m.m_joint, args.tau_hi, args.tau_lo)
+            # keep the raw margins so the synergy fraction can be studied as a DISTRIBUTION
+            # (threshold-free), not just the tau-sensitive boolean.
+            syn_margins = {"m_text": m.m_text, "m_vision": m.m_vision, "m_joint": m.m_joint}
 
         # dispatch by policy family
         roles_for_log = None
@@ -249,9 +253,12 @@ def main():
         pred = backbone.generate_answer(inputs, max_new_tokens=16 if r.get("choices") else 64)
         correct = mcq_correct(pred, r["answer"], r.get("choices")) if r.get("choices") else (r["answer"].lower() in pred.lower())
         acc.add(correct, vtok, in_synergy_subset=in_syn, roles=roles_for_log)
-        per_item.append({"video_id": vid, "pred": pred, "gold": r["answer"], "correct": correct,
-                         "visual_tokens": vtok, "synergy_required": in_syn,
-                         "roles": [rr.short for rr in roles_for_log] if roles_for_log else None})
+        item = {"video_id": vid, "pred": pred, "gold": r["answer"], "correct": correct,
+                "visual_tokens": vtok, "synergy_required": in_syn,
+                "roles": [rr.short for rr in roles_for_log] if roles_for_log else None}
+        if syn_margins is not None:
+            item.update(syn_margins)  # m_text/m_vision/m_joint for the synergy-fraction study
+        per_item.append(item)
 
     summ = acc.summary()
     summ.update({"policy": args.policy, "n_low": args.n_low, "n_high": args.n_high})
