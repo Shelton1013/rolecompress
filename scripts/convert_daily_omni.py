@@ -27,11 +27,19 @@ def strip_letter(opt):
 
 
 def index_videos(video_root):
-    """stem -> abspath for every video file under video_root."""
+    """Map many id-forms -> abspath for every video file under video_root, so a qa `video_id`
+    resolves whether the file is <id>.mp4, <id>_video.mp4, or Videos/<id>/<id>_video.mp4
+    (Daily-Omni layout keys the clip by its PARENT DIR name = the video_id)."""
     idx = {}
     for ext in _VID_EXT:
         for p in glob.glob(os.path.join(video_root, "**", "*" + ext), recursive=True):
-            idx.setdefault(os.path.splitext(os.path.basename(p))[0], p)
+            stem = os.path.splitext(os.path.basename(p))[0]
+            keys = {stem, os.path.basename(os.path.dirname(p))}  # filename stem + parent dir name
+            for suf in ("_video", "-video", "_v"):
+                if stem.endswith(suf):
+                    keys.add(stem[: -len(suf)])
+            for k in keys:
+                idx.setdefault(k, p)
     return idx
 
 
