@@ -258,6 +258,8 @@ def main():
                 "roles": [rr.short for rr in roles_for_log] if roles_for_log else None}
         if syn_margins is not None:
             item.update(syn_margins)  # m_text/m_vision/m_joint for the synergy-fraction study
+        if r.get("task_type") is not None:
+            item["task_type"] = r["task_type"]  # e.g. Daily-Omni "AV Event Alignment" -> per-type synergy
         per_item.append(item)
 
     summ = acc.summary()
