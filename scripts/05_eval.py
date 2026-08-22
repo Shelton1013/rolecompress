@@ -201,9 +201,14 @@ def main():
             allframes = [f for fs in frames_per_seg for f in fs][:32]
             m = backbone.score_probe(probe, allframes)
             in_syn = is_synergy_required(m.m_text, m.m_vision, m.m_joint, args.tau_hi, args.tau_lo)
+            # blind pass (question+choices only, no video/no ASR) = MCQ language prior, on the
+            # SAME gold-margin scale. Subtracting it in analysis prevents lucky-guess single
+            # modalities from masking true synergy / inflating text-redundancy.
+            m_prior = backbone._score_pass(probe, frames=None, use_text=False)
             # keep the raw margins so the synergy fraction can be studied as a DISTRIBUTION
-            # (threshold-free), not just the tau-sensitive boolean.
-            syn_margins = {"m_text": m.m_text, "m_vision": m.m_vision, "m_joint": m.m_joint}
+            # (threshold-free) with/without prior correction, not just the tau-sensitive boolean.
+            syn_margins = {"m_text": m.m_text, "m_vision": m.m_vision, "m_joint": m.m_joint,
+                           "m_prior": m_prior}
 
         # dispatch by policy family
         roles_for_log = None
